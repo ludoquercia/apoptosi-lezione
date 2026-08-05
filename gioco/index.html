@@ -1,0 +1,3857 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>BioQuest — Biologia, semestre aperto</title>
+<style>:root{color-scheme:dark}html,body{margin:0;padding:0;background:#0f1420}</style>
+</head>
+<body>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="BioQuest — gioco educativo di biologia per il semestre aperto di Medicina. Unità 7: il controllo della proliferazione e della sopravvivenza cellulare.">
+<title>BioQuest — Biologia, semestre aperto</title>
+
+<style>
+:root{
+  --fondo:#0f1420;
+  --fondo2:#1e2636;
+  --bordo:#33415a;
+  --ink:#0f1420;
+  --carta:#f2efe6;
+  --teal:#2e8480;
+  --ambra:#e4873a;
+  --cremisi:#c43e3b;
+  --tasto:#1e2636;
+  --tasto-attivo:#2e8480;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--fondo);
+  color:var(--carta);
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  overflow:hidden;
+  overscroll-behavior:none;
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+  -webkit-text-size-adjust:100%;
+}
+#stage{
+  display:flex;
+  flex-direction:column;
+  height:100vh;
+  height:100dvh;
+  padding-top:env(safe-area-inset-top);
+  padding-bottom:env(safe-area-inset-bottom);
+}
+#viewport{
+  flex:1 1 auto;
+  min-height:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  position:relative;
+}
+#schermo{
+  display:block;
+  background:#1b2430;
+  border-radius:6px;
+  box-shadow:0 0 0 2px #2c3646, 0 12px 44px rgba(0,0,0,.55);
+  touch-action:none;
+}
+/* Layer invisibile per lettori di schermo e tastiera.
+   pointer-events:none è OBBLIGATORIO: senza, questi bottoni rubano i tap
+   destinati al canvas proprio nell'area delle risposte. */
+#a11y{
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+}
+#a11y button{
+  position:absolute;
+  opacity:0;
+  border:0;
+  background:transparent;
+  color:transparent;
+  font:inherit;
+}
+#a11y button:focus-visible{
+  opacity:1;
+  outline:2px solid var(--ambra);
+  color:transparent;
+}
+
+/* ── Comandi touch ─────────────────────────────────────── */
+#touch{
+  flex:0 0 auto;
+  display:none;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:10px 18px 16px;
+  user-select:none;
+}
+#dpad{
+  position:relative;
+  width:min(150px,38vw);
+  height:min(150px,38vw);
+  flex:0 0 auto;
+}
+#dpad button{
+  position:absolute;
+  width:33.34%;
+  height:33.34%;
+  border:2px solid var(--bordo);
+  background:var(--tasto);
+  color:#8ba0c0;
+  font-size:15px;
+  line-height:1;
+  border-radius:6px;
+  display:grid;
+  place-items:center;
+  padding:0;
+}
+#dpad button:active,#dpad button[data-giu="1"]{background:var(--tasto-attivo);color:#fff}
+#d-su{left:33.33%;top:0}
+#d-giu{left:33.33%;bottom:0}
+#d-sx{left:0;top:33.33%}
+#d-dx{right:0;top:33.33%}
+#azioni{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  align-items:flex-end;
+}
+#azioni button{
+  width:min(72px,18vw);
+  height:min(72px,18vw);
+  border-radius:50%;
+  border:2px solid var(--bordo);
+  background:var(--tasto);
+  color:#c8d4e6;
+  font-size:19px;
+  font-weight:700;
+  letter-spacing:.5px;
+}
+#azioni button:active{background:var(--tasto-attivo);color:#fff}
+#b-a{border-color:#2e8480}
+#b-b{border-color:#8f2c2a}
+
+/* Su telefono e tablet i comandi ci sono; su desktop col mouse no. */
+@media (hover:none) and (pointer:coarse){ #touch{display:flex} }
+body.forza-touch #touch{display:flex}
+
+/* In verticale lo schermo di gioco sta in alto e i comandi occupano
+   lo spazio che avanza, invece di lasciare due bande nere. */
+@media (orientation:portrait){
+  #viewport{ align-items:center }
+  #touch{ flex:1 1 auto; padding-bottom:24px }
+  #dpad{ width:min(190px,48vw); height:min(190px,48vw) }
+  #azioni button{ width:min(84px,21vw); height:min(84px,21vw); font-size:22px }
+}
+
+/* ── Schermata d'errore: DOM, non canvas ────────────────
+   Se salta il boot il canvas potrebbe non esistere nemmeno.
+   Questa invece si vede sempre, ed è selezionabile e copiabile. */
+#errore{
+  display:none;
+  position:fixed;
+  inset:0;
+  z-index:99;
+  background:#12161f;
+  color:#f2efe6;
+  padding:26px 22px;
+  overflow:auto;
+  font-size:14px;
+  line-height:1.6;
+}
+#errore h1{
+  font-size:17px;
+  color:#e4873a;
+  margin-bottom:14px;
+  letter-spacing:.5px;
+}
+#errore pre{
+  white-space:pre-wrap;
+  word-break:break-word;
+  background:#0b0e14;
+  border-left:3px solid #c43e3b;
+  padding:12px 14px;
+  margin:12px 0;
+  font-size:13px;
+  user-select:text;
+}
+#errore p{max-width:60ch;margin-bottom:10px}
+
+dialog{
+  border:2px solid var(--bordo);
+  background:#161d2b;
+  color:var(--carta);
+  padding:20px;
+  max-width:min(520px,92vw);
+  border-radius:4px;
+  font-size:14px;
+  line-height:1.6;
+}
+dialog::backdrop{background:rgba(6,9,15,.82)}
+dialog h2{font-size:15px;color:var(--ambra);margin-bottom:12px}
+dialog p{margin-bottom:12px;max-width:52ch}
+dialog textarea{
+  width:100%;
+  height:110px;
+  background:#0b0e14;
+  color:#cfe3e1;
+  border:1px solid var(--bordo);
+  padding:9px;
+  font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;
+  resize:vertical;
+  word-break:break-all;
+}
+dialog .riga{display:flex;gap:9px;margin-top:14px;flex-wrap:wrap}
+dialog button{
+  background:var(--tasto);
+  color:var(--carta);
+  border:1px solid var(--bordo);
+  padding:9px 15px;
+  font:inherit;
+  font-size:13px;
+  border-radius:3px;
+  cursor:pointer;
+}
+dialog button:hover{background:var(--teal);border-color:var(--teal)}
+#esitoCodice{font-size:12px;color:#86c96e;margin-top:9px;min-height:1.2em}
+</style>
+
+<div id="stage">
+  <div id="viewport">
+    <canvas id="schermo" width="320" height="208" role="img" aria-label="BioQuest, gioco di biologia"></canvas>
+    <div id="a11y" aria-live="polite">
+      <button type="button" data-op="0" disabled></button>
+      <button type="button" data-op="1" disabled></button>
+      <button type="button" data-op="2" disabled></button>
+      <button type="button" data-op="3" disabled></button>
+    </div>
+  </div>
+  <div id="touch">
+    <div id="dpad">
+      <button type="button" id="d-su" data-t="su" aria-label="Su">▲</button>
+      <button type="button" id="d-sx" data-t="sx" aria-label="Sinistra">◀</button>
+      <button type="button" id="d-dx" data-t="dx" aria-label="Destra">▶</button>
+      <button type="button" id="d-giu" data-t="giu" aria-label="Giù">▼</button>
+    </div>
+    <div id="azioni">
+      <button type="button" id="b-a" data-t="a" aria-label="Conferma">A</button>
+      <button type="button" id="b-b" data-t="b" aria-label="Indietro">B</button>
+    </div>
+  </div>
+</div>
+
+<div id="errore" role="alert">
+  <h1>BioQuest non è riuscito a partire</h1>
+  <div id="errore-corpo"></div>
+</div>
+
+<dialog id="modale">
+  <h2 id="modale-titolo">Codice di ripresa</h2>
+  <div id="modale-corpo"></div>
+  <div class="riga">
+    <button type="button" id="modale-ok">Chiudi</button>
+  </div>
+</dialog>
+
+<!--
+════════════════════════════════════════════════════════════════════════
+  I CONTENUTI DEL GIOCO — QUESTA È L'UNICA PARTE DA MODIFICARE
+════════════════════════════════════════════════════════════════════════
+  Per aggiungere un'unità del programma non serve saper programmare:
+  duplica un blocco { ... } dentro "unita" e cambia i testi.
+
+  CINQUE REGOLE, e non sbagli:
+  1. Ogni testo va fra virgolette DOPPIE "  — mai fra apici '
+     Gli apostrofi italiani (l'ATP, dell'apoptosi) dentro le virgolette
+     doppie non danno nessun problema.
+  2. Non incollare da Word: le virgolette curve “ ” rompono il file.
+     Passa prima da un blocco note.
+  3. Dopo l'ULTIMO elemento di una lista NON va la virgola.
+  4. "risposta" è il numero dell'opzione giusta: 1, 2, 3 o 4.
+  5. "perche_no" ha sempre 4 voci nello stesso ordine delle opzioni:
+     quella dell'opzione giusta si lascia vuota "".
+
+  Se sbagli qualcosa il gioco non parte, ma ti scrive a schermo
+  la riga esatta da correggere. Non serve aprire nulla.
+
+  LIMITI (controllati all'avvio): domanda max 110 caratteri,
+  opzione max 68. Oltre i 34 caratteri la domanda passa da sola
+  al layout largo, che nasconde lo sprite dell'esaminatore.
+════════════════════════════════════════════════════════════════════════
+-->
+<script type="application/json" id="dati">
+{
+ "versioneSchema": 1,
+ "titolo": "BioQuest",
+ "sottotitolo": "Biologia — semestre aperto",
+ "unita": [
+  {
+   "id": "u1",
+   "numero": 1,
+   "stato": "inArrivo",
+   "titolo": "Le basi dell'organizzazione biologica e molecolare della vita",
+   "zona": "Radura delle Origini",
+   "tema": "bosco",
+   "colore": "verde",
+   "seed": 101,
+   "richiede": null
+  },
+  {
+   "id": "u2",
+   "numero": 2,
+   "stato": "inArrivo",
+   "titolo": "I meccanismi cellulari di trasmissione e controllo dell'informazione genetica e epigenetica",
+   "zona": "Archivio della Cromatina",
+   "tema": "bosco",
+   "colore": "viola",
+   "seed": 202,
+   "richiede": "u1"
+  },
+  {
+   "id": "u3",
+   "numero": 3,
+   "stato": "inArrivo",
+   "titolo": "Il flusso dell'informazione",
+   "zona": "Officina del Messaggio",
+   "tema": "bosco",
+   "colore": "ambra",
+   "seed": 303,
+   "richiede": "u2"
+  },
+  {
+   "id": "u4",
+   "numero": 4,
+   "stato": "inArrivo",
+   "titolo": "I meccanismi cellulari di trasmissione e controllo dei caratteri selvatici e mutati",
+   "zona": "Valle degli Alleli",
+   "tema": "bosco",
+   "colore": "verde",
+   "seed": 404,
+   "richiede": "u3"
+  },
+  {
+   "id": "u5",
+   "numero": 5,
+   "stato": "inArrivo",
+   "titolo": "Le strutture cellulari: biogenesi, morfologia e funzioni",
+   "zona": "Città degli Organelli",
+   "tema": "bosco",
+   "colore": "teal",
+   "seed": 505,
+   "richiede": "u4"
+  },
+  {
+   "id": "u6",
+   "numero": 6,
+   "stato": "inArrivo",
+   "titolo": "La cellula e l'ambiente, la segnalazione cellulare e la trasduzione del segnale",
+   "zona": "Rete dei Segnali",
+   "tema": "bosco",
+   "colore": "viola",
+   "seed": 606,
+   "richiede": "u5"
+  },
+  {
+   "id": "u7",
+   "numero": 7,
+   "stato": "giocabile",
+   "titolo": "Il controllo della proliferazione e della sopravvivenza cellulare",
+   "zona": "Giardino del Ciclo",
+   "tema": "bosco",
+   "colore": "cremisi",
+   "seed": 707,
+   "richiede": null,
+   "cartello": "GIARDINO DEL CICLO — Unità 7. Qui si impara come una cellula decide di dividersi, e come decide di morire.",
+   "missioni": [
+    {
+     "id": "u7m1",
+     "titolo": "Il patto della cellula",
+     "npc": {
+      "nome": "Esaminatrice Rea",
+      "aspetto": 1
+     },
+     "intro": [
+      "Prima di come si muore, si impara perché.",
+      "Tre domande sul patto che ha firmato ogni tua cellula."
+     ],
+     "vittoria": [
+      "Bene. Rinuncia e controllo: tutto il resto viene da lì."
+     ],
+     "sconfitta": [
+      "Senza la premessa il resto non sta in piedi. Rileggila e torna."
+     ],
+     "domande": [
+      {
+       "id": "q-u7-m1-01",
+       "testo": "In cambio della vita in un organismo, a cosa ha rinunciato ogni tua cellula?",
+       "opzioni": [
+        "Alla replicazione illimitata",
+        "A produrre energia da sola",
+        "Ad avere un nucleo proprio",
+        "A muoversi nel tessuto"
+       ],
+       "risposta": 1,
+       "spiegazione": "Un batterio esiste per moltiplicarsi finché trova nutrimento: è il suo unico mestiere. Le nostre cellule hanno firmato il patto opposto — niente divisioni a piacere — e in cambio hanno avuto la sopravvivenza dell'insieme. Da quel patto discendono due obblighi che valgono per tutte: non dividerti se non ti viene detto, e smontati quando diventi un problema.",
+       "perche_no": [
+        "",
+        "L'energia se la producono eccome, con i propri mitocondri: la rinuncia riguarda la libertà di dividersi, non il metabolismo.",
+        "Il nucleo ce l'hanno tutte, tranne i globuli rossi maturi: non è quello il prezzo del patto.",
+        "Molte cellule si muovono benissimo, dai globuli bianchi ai fibroblasti che raggiungono una ferita."
+       ],
+       "carta": {
+        "id": "c-patto",
+        "titolo": "Il patto",
+        "categoria": "Concetti",
+        "icona": "cellula",
+        "testo": "Essere pluricellulari costa una rinuncia: nessuna cellula si divide quando le pare, e ognuna accetta di morire quando serve. Il batterio ha fatto la scelta opposta e infatti non costruisce nulla di più grande di sé."
+       }
+      },
+      {
+       "id": "q-u7-m1-02",
+       "testo": "L'apoptosi rimuove una cellula rispettando una condizione precisa. Quale?",
+       "opzioni": [
+        "Non danneggiare il vicinato",
+        "Non consumare energia",
+        "Avvenire solo nell'embrione",
+        "Riguardare solo cellule infette"
+       ],
+       "risposta": 1,
+       "spiegazione": "La definizione è tutta qui: rimuovere una o più cellule senza danneggiare il vicinato. Non è un incidente ma una procedura, sempre con gli stessi cinque passaggi, e il suo scopo dichiarato è che nessuno attorno si accorga di niente. Se durante la rimozione il contenuto finisse fuori, l'apoptosi avrebbe fallito: quella sarebbe necrosi.",
+       "perche_no": [
+        "",
+        "Al contrario: smontarsi in ordine richiede ATP, ed è proprio la disponibilità di energia a distinguerla dalla necrosi.",
+        "Nell'embrione è spettacolare — separa le dita — ma continua per tutta la vita: il tuo intestino la usa tutti i giorni.",
+        "Le cellule infette sono un caso fra tanti: si smontano anche cellule sane in eccesso, invecchiate o fuori posto."
+       ],
+       "carta": {
+        "id": "c-apoptosi",
+        "titolo": "Apóptosis",
+        "categoria": "Concetti",
+        "icona": "cellula",
+        "testo": "Dal greco: la caduta delle foglie. Nel 1972 Kerr, Wyllie e Currie andarono a chiedere il nome al professore di greco, per averne uno che non facesse paura: non è una tragedia, è autunno."
+       }
+      },
+      {
+       "id": "q-u7-m1-03",
+       "testo": "Salta il controllo della distruzione: si smonta chi doveva restare. Cosa compare?",
+       "opzioni": [
+        "Neurodegenerazione",
+        "Un tumore",
+        "Un'infezione cronica",
+        "Una cicatrice"
+       ],
+       "risposta": 1,
+       "spiegazione": "I pilastri sono due e si rompono in direzioni opposte. Se salta il controllo della replicazione restano vive cellule che dovevano smontarsi, e il risultato è il cancro. Se salta il controllo della distruzione muore chi doveva restare: è la direzione delle malattie neurodegenerative, dove il guaio non è la morte in sé ma il fatto che nel cervello quelle cellule non si rimpiazzano.",
+       "perche_no": [
+        "",
+        "Il tumore è l'errore opposto: là il programma di morte non parte quando dovrebbe, e le cellule danneggiate restano.",
+        "Le difese contro le infezioni usano l'apoptosi, non la subiscono: una cellula infettata che si smonta è il sistema che funziona.",
+        "La cicatrice segue la necrosi e l'infiammazione, cioè un danno esterno con contenuto riversato fuori."
+       ],
+       "carta": {
+        "id": "c-pilastri",
+        "titolo": "I due pilastri",
+        "categoria": "Concetti",
+        "icona": "scudo",
+        "testo": "Controllo della replicazione e controllo della distruzione. Quando cede il primo: cancro. Quando cede il secondo: neurodegenerazione. Due malattie lontanissime, lo stesso interruttore."
+       }
+      }
+     ]
+    },
+    {
+     "id": "u7m2",
+     "titolo": "I cinque passaggi",
+     "npc": {
+      "nome": "Esaminatore Verri",
+      "aspetto": 2
+     },
+     "intro": [
+      "Non è un incidente: è una procedura, sempre uguale.",
+      "Quattro domande sui passaggi. Uno alla volta."
+     ],
+     "vittoria": [
+      "Giusto. Restringe, taglia, gonfia, impacchetta, chiama."
+     ],
+     "sconfitta": [
+      "I passaggi sono cinque e vanno in ordine. Ripassali e torna."
+     ],
+     "domande": [
+      {
+       "id": "q-u7-m2-01",
+       "testo": "Nel primo passaggio la cellula si restringe. Cosa perde, tutto insieme?",
+       "opzioni": [
+        "Potassio, cloro e acqua",
+        "Soltanto acqua",
+        "Calcio e sodio",
+        "Proteine e lipidi"
+       ],
+       "risposta": 1,
+       "spiegazione": "Escono in contemporanea K+, Cl- e l'acqua che li segue: il volume crolla, ed è la prima cosa che si vede al microscopio. Ma la perdita di potassio non è un effetto collaterale del morire: è il segnale che accende le caspasi. Finché il citoplasma è pieno di potassio quelle forbici restano spente, e la cellula resta viva.",
+       "perche_no": [
+        "",
+        "L'acqua se ne va, ma va dietro agli ioni: sono loro a uscire per primi, ed è il potassio a dare il via alle caspasi.",
+        "Nella necrosi è il sodio a entrare, con l'acqua, e la cellula si gonfia: qui succede l'esatto contrario.",
+        "Proteine e lipidi restano dentro fino alla fine, chiusi nei corpi apoptotici: se uscissero, il vicinato se ne accorgerebbe."
+       ],
+       "carta": {
+        "id": "c-potassio",
+        "titolo": "Il potassio",
+        "categoria": "Molecole",
+        "icona": "cellula",
+        "testo": "Esce per primo, e uscendo dà il via libera alle caspasi. Finché la cellula è piena di K+ le forbici restano chiuse: la morte comincia da una perdita di volume."
+       }
+      },
+      {
+       "id": "q-u7-m2-02",
+       "testo": "Il DNA viene tagliato, ma non a caso: dove passa la forbice?",
+       "opzioni": [
+        "Nel filo scoperto fra due nucleosomi",
+        "Dentro il nucleosoma",
+        "Solo alle estremità del cromosoma",
+        "A caso lungo tutto il filamento"
+       ],
+       "risposta": 1,
+       "spiegazione": "Il DNA è avvolto sui nucleosomi come il filo sui rocchetti, e la forbice può entrare solo nel tratto scoperto fra un rocchetto e l'altro. Per questo i frammenti vengono tutti della stessa misura, multipli di circa 180 basi. La forbice si chiama CAD ed è normalmente tenuta ferma da una guardiana, I-CAD: le caspasi tagliano la guardiana, e CAD si libera.",
+       "perche_no": [
+        "",
+        "Dentro il nucleosoma il DNA è avvolto stretto attorno agli istoni: la forbice non ci arriva proprio.",
+        "I telomeri si accorciano a ogni divisione, ma è un'altra storia: qui il taglio avviene lungo tutto il cromosoma, a intervalli regolari.",
+        "Tagliare a caso è la firma della necrosi: al microscopio si vede una poltiglia, non frammenti ordinati."
+       ],
+       "carta": {
+        "id": "c-cad",
+        "titolo": "CAD e I-CAD",
+        "categoria": "Molecole",
+        "icona": "forbici",
+        "testo": "La forbice del DNA e la sua guardiana. Finché I-CAD la tiene, non succede niente; le caspasi tagliano la guardiana e CAD comincia a lavorare — solo dove il filo è scoperto."
+       }
+      },
+      {
+       "id": "q-u7-m2-03",
+       "testo": "Sotto la membrana i filamenti contrattili sono tenuti a freno. Chi taglia la sicura?",
+       "opzioni": [
+        "Le caspasi",
+        "Il macrofago",
+        "Il citocromo c",
+        "La fosfatidilserina"
+       ],
+       "risposta": 1,
+       "spiegazione": "Sotto la membrana c'è un reticolo di filamenti sempre pronti a tirare, tenuti fermi da una sicura. Le caspasi tagliano quella sicura e la contrazione diventa continua: la superficie si gonfia in bolle — il blebbing — e gli organelli vengono smontati dall'interno. Le stesse forbici hanno già tagliato l'impalcatura del nucleo e gli ancoraggi con le cellule vicine.",
+       "perche_no": [
+        "",
+        "Il macrofago arriva alla fine, a ritirare i pacchetti: non entra nella cellula a tagliare niente.",
+        "Il citocromo c è il messaggio che dà l'ordine di morte uscendo dal mitocondrio, ma non taglia: a tagliare sono sempre le caspasi.",
+        "La fosfatidilserina è l'etichetta «mangiami» esposta in superficie: un segnale, non uno strumento da taglio."
+       ],
+       "carta": {
+        "id": "c-blebbing",
+        "titolo": "Blebbing",
+        "categoria": "Concetti",
+        "icona": "cellula",
+        "testo": "La superficie che ribolle: i filamenti contrattili, liberati dalle caspasi, tirano senza sosta e la membrana si gonfia in bolle. Da quelle bolle, strozzandosi, nascono i corpi apoptotici."
+       }
+      },
+      {
+       "id": "q-u7-m2-04",
+       "testo": "Come fa la cellula morente a farsi ritirare dai macrofagi?",
+       "opzioni": [
+        "Espone la fosfatidilserina",
+        "Rilascia il proprio DNA",
+        "Si attacca al macrofago",
+        "Cambia colore"
+       ],
+       "risposta": 1,
+       "spiegazione": "Il ritiro è in tre mosse: la cellula rilascia sostanze che richiamano i fagociti da lontano, espone la fosfatidilserina — un lipide che normalmente sta solo sul lato interno della membrana — e smette di esporre i segnali «non mangiarmi». Quella etichetta è la stessa che si va a cercare in laboratorio con l'annessina V per contare le cellule in apoptosi.",
+       "perche_no": [
+        "",
+        "Il DNA resta chiuso dentro i pacchetti: se uscisse sarebbe un segnale di danno, e partirebbe l'infiammazione.",
+        "Non è la morente a raggiungere il fagocita: è il fagocita che arriva, richiamato dai segnali.",
+        "Il colore non c'entra: i segnali dell'apoptosi sono molecole esposte in superficie, non cambiamenti visibili a occhio."
+       ],
+       "carta": {
+        "id": "c-ps",
+        "titolo": "Fosfatidilserina",
+        "categoria": "Molecole",
+        "icona": "cellula",
+        "testo": "Il lipide che sta sempre nascosto nel lato interno della membrana. Quando compare all'esterno significa una cosa sola: «sono in apoptosi, ritiratemi». In laboratorio la si scova con l'annessina V."
+       }
+      }
+     ]
+    },
+    {
+     "id": "u7m3",
+     "titolo": "Le forbici e le due vie",
+     "npc": {
+      "nome": "Esaminatrice Caspa",
+      "aspetto": 3
+     },
+     "intro": [
+      "Chi taglia? E chi dà l'ordine di tagliare?",
+      "Quattro domande. Se le prendi tutte, ti do la carta che non ha quasi nessuno."
+     ],
+     "vittoria": [
+      "Ottimo. Tieni: questa non la sa quasi nessuno."
+     ],
+     "sconfitta": [
+      "Le due vie finiscono nello stesso posto. Riprova."
+     ],
+     "cartaBonus": {
+      "id": "c-bcl2",
+      "titolo": "BCL-2 vs BAX",
+      "categoria": "Molecole",
+      "icona": "scudo",
+      "testo": "Chi decide se il mitocondrio apre? Due squadre che si tengono per il bavero: BAX e BAK bucano la membrana, BCL-2 e i suoi la tengono chiusa. Quando i pro-morte vincono ai punti, il citocromo c esce e non si torna indietro. Molti tumori barano producendo BCL-2 in eccesso, e oggi esistono farmaci che lo neutralizzano."
+     },
+     "domande": [
+      {
+       "id": "q-u7-m3-01",
+       "testo": "Perché le caspasi stanno già dentro ogni cellula, pronte ma spente?",
+       "opzioni": [
+        "Perché servono subito, non fra ore",
+        "Perché costano poco da tenere",
+        "Perché le fabbrica il fegato",
+        "Perché servono anche a digerire"
+       ],
+       "risposta": 1,
+       "spiegazione": "È una questione di velocità. Se una cellula infettata dovesse sintetizzarle da zero ci vorrebbero ore, e un virus — che ha bisogno di una cellula viva per replicarsi — avrebbe tutto il tempo di moltiplicarsi e uscire. Così invece l'ordine e lo smontaggio sono questione di minuti: le iniziatrici si attivano tagliandosi a vicenda, poi accendono le esecutrici, che fanno il lavoro vero.",
+       "perche_no": [
+        "",
+        "Tenere in casa proteine inutilizzate non è affatto gratis: si fa lo stesso, perché la rapidità vale più del risparmio.",
+        "Il fegato produce molte proteine del sangue, ma le caspasi sono di ogni cellula e restano dentro quella cellula.",
+        "La digestione è mestiere dei lisosomi e degli enzimi digestivi: le caspasi tagliano proteine bersaglio precise, non il cibo."
+       ],
+       "carta": {
+        "id": "c-caspasi",
+        "titolo": "Caspasi",
+        "categoria": "Molecole",
+        "icona": "forbici",
+        "testo": "Forbici molecolari presenti in ogni cellula, chiuse a chiave come un estintore dietro il vetro. Le iniziatrici danno l'ordine, le esecutrici tagliano: si accendono a catena, come il domino."
+       }
+      },
+      {
+       "id": "q-u7-m3-02",
+       "testo": "Nella via intrinseca, chi buca la membrana del mitocondrio?",
+       "opzioni": [
+        "Gli esecutori BAX e BAK",
+        "I guardiani BCL-2 e MCL-1",
+        "I sensori BIM e PUMA",
+        "Il citocromo c stesso"
+       ],
+       "risposta": 1,
+       "spiegazione": "Le famiglie in gioco sono tre. I sensori — BIM, PUMA, NOXA — sorvegliano: BIM sta ancorato al citoscheletro e se quello cede si stacca. I guardiani, BCL-2 e compagnia, tengono bloccati gli esecutori. Gli esecutori BAX e BAK, quando i sensori occupano i guardiani, si liberano, si assemblano sulla membrana del mitocondrio e la bucano. Da lì esce il citocromo c: è l'ordine di morte.",
+       "perche_no": [
+        "",
+        "I guardiani fanno l'opposto: finché reggono tengono fermi gli esecutori e non succede niente.",
+        "I sensori danno l'allarme e occupano i guardiani, ma non bucano nulla: sbloccano chi lo farà.",
+        "Il citocromo c è quello che esce dal buco, non quello che lo apre: dentro il mitocondrio faceva tutt'altro mestiere."
+       ],
+       "carta": {
+        "id": "c-citocromo",
+        "titolo": "Citocromo c",
+        "categoria": "Molecole",
+        "icona": "mito",
+        "testo": "Il mitocondrio: di giorno ti produce l'energia, di notte fa il boia. Dentro trasporta elettroni nella catena respiratoria, fuori è la condanna a morte. Stessa molecola, indirizzo diverso."
+       }
+      },
+      {
+       "id": "q-u7-m3-03",
+       "testo": "Il guardiano MCL-1 dura circa mezz'ora e va rifatto. Cosa comporta?",
+       "opzioni": [
+        "Resta viva solo chi produce proteine",
+        "Ogni cellula muore ogni 30 minuti",
+        "Serve più ossigeno del normale",
+        "Il DNA va copiato ogni ora"
+       ],
+       "risposta": 1,
+       "spiegazione": "MCL-1 è uno dei guardiani che tengono bloccati gli esecutori, e viene degradato di continuo: circa ogni trenta minuti va rifatto da capo. Vuol dire che una cellula resta viva solo finché è in grado di sintetizzare proteine. Basta che il macchinario si fermi — un danno serio, un blocco della sintesi — e i guardiani si esauriscono da soli: nessuno tiene più fermi BAX e BAK.",
+       "perche_no": [
+        "",
+        "Il guardiano viene rifatto man mano: finché la produzione regge, la cellula non muore affatto ogni mezz'ora.",
+        "L'ossigeno serve al metabolismo in generale, ma qui il punto è la sintesi proteica, non la respirazione.",
+        "La copia del DNA avviene una volta sola per ciclo, nella fase S: non ha niente a che vedere con il ricambio dei guardiani."
+       ],
+       "carta": {
+        "id": "c-mcl1",
+        "titolo": "MCL-1",
+        "categoria": "Molecole",
+        "icona": "scudo",
+        "testo": "Il guardiano a scadenza: dura una mezz'ora e va rifatto. Restare vivi non è uno stato, è un lavoro continuo — smetti di produrre proteine e il freno si scioglie da solo."
+       }
+      },
+      {
+       "id": "q-u7-m3-04",
+       "testo": "Sulle molecole MHC di classe I ogni cellula espone una cosa. Quale?",
+       "opzioni": [
+        "Pezzi delle proteine che sta producendo",
+        "Il proprio DNA",
+        "Soltanto zuccheri di superficie",
+        "Niente, se è sana"
+       ],
+       "risposta": 1,
+       "spiegazione": "Ogni cellula tiene costantemente in vetrina, sulle MHC di classe I — le HLA — dei frammenti delle proteine che sta producendo in quel momento. Non può scegliere cosa esporre: se dentro sta assemblando pezzi di un virus, quelli finiscono in vetrina, e il linfocita T citotossico consegna l'ordine di morte. È la via estrinseca: il segnale arriva da fuori.",
+       "perche_no": [
+        "",
+        "Il DNA resta nel nucleo: quello che finisce in vetrina sono frammenti di proteine, cioè il prodotto di quel DNA.",
+        "Zuccheri e lipidi ci sono, ma la vetrina che interessa al sistema immunitario mostra frammenti proteici.",
+        "Anche una cellula perfettamente sana espone in continuazione: sono frammenti suoi, e il linfocita passa oltre. Anzi, smettere di esporre è sospetto — quello lo notano le NK."
+       ],
+       "carta": {
+        "id": "c-mhc",
+        "titolo": "MHC di classe I",
+        "categoria": "Molecole",
+        "icona": "scudo",
+        "testo": "La vetrina obbligatoria: ogni cellula mostra fuori un campione di quello che sta producendo dentro, e non può scegliere cosa. Chi espone un pezzo di virus viene chiuso; chi smaschera la vetrina insospettisce le NK."
+       }
+      }
+     ]
+    },
+    {
+     "id": "u7m4",
+     "titolo": "Chi dà l'ordine",
+     "npc": {
+      "nome": "Esaminatore Cinquantatré",
+      "aspetto": 4
+     },
+     "intro": [
+      "Le forbici le hai trovate. Ma chi decide quando usarle?",
+      "Tre domande su p53. Poi sei pronto per il Professore."
+     ],
+     "vittoria": [
+      "Bene. Ferma, ripara, chiude: in quest'ordine."
+     ],
+     "sconfitta": [
+      "p53 ha tre poteri e li usa in sequenza. Riguardali e torna."
+     ],
+     "domande": [
+      {
+       "id": "q-u7-m4-01",
+       "testo": "In una cellula sana p53 quasi non si vede. Perché?",
+       "opzioni": [
+        "MDM2 la degrada di continuo",
+        "Il suo gene è spento",
+        "Resta chiusa nel mitocondrio",
+        "Viene prodotta solo di notte"
+       ],
+       "risposta": 1,
+       "spiegazione": "p53 viene prodotta in continuazione e distrutta in continuazione da MDM2: il livello resta talmente basso che è come se non ci fosse. Appena compare un danno, MDM2 si stacca e smette di degradarla — e siccome la produzione non si era mai fermata, in pochissimo tempo ce n'è ovunque. Non è un interruttore che si accende: è un rubinetto sempre aperto con lo scarico che si chiude.",
+       "perche_no": [
+        "",
+        "Il gene è attivo eccome: è la proteina a essere eliminata appena prodotta, ed è proprio questo che rende la risposta così rapida.",
+        "p53 lavora nel nucleo, sul DNA: nel mitocondrio si gioca la parte finale della via intrinseca, non il suo controllo.",
+        "Non c'è nessun ritmo giorno-notte: il livello dipende dal danno, non dall'ora."
+       ],
+       "carta": {
+        "id": "c-p53",
+        "titolo": "p53",
+        "categoria": "Molecole",
+        "icona": "dna",
+        "testo": "Il guardiano del genoma, con tre poteri: fermare il ciclo, far riparare, ordinare la morte. L'unico dipendente autorizzato a licenziare l'intera azienda, sé stesso compreso."
+       }
+      },
+      {
+       "id": "q-u7-m4-02",
+       "testo": "Arriva un danno al DNA e p53 si accumula. Qual è la sua prima mossa?",
+       "opzioni": [
+        "Fermare la duplicazione con p21",
+        "Ordinare subito l'apoptosi",
+        "Far copiare il DNA più in fretta",
+        "Chiamare i macrofagi"
+       ],
+       "risposta": 1,
+       "spiegazione": "L'ordine dei tre poteri non è casuale: prima ferma, poi ripara, e solo alla fine chiude. p53 induce p21, che blocca le cicline e la duplicazione si arresta; a quel punto arrivano gli enzimi di riparazione sul punto danneggiato. Solo se il danno non è riparabile si passa all'ultima carta. La logica è la stessa di una catena di montaggio: fermare il nastro prima di far passare un pezzo difettoso.",
+       "perche_no": [
+        "",
+        "La morte è l'ultima opzione, non la prima: si prova prima a salvare la cellula, perché ogni cellula costa.",
+        "Copiare un DNA danneggiato è esattamente quello che p53 esiste per impedire: l'errore finirebbe in tutte le cellule figlie.",
+        "I macrofagi ritirano i corpi apoptotici alla fine del processo: non partecipano alla decisione."
+       ],
+       "carta": {
+        "id": "c-p21",
+        "titolo": "p21",
+        "categoria": "Molecole",
+        "icona": "scudo",
+        "testo": "Il freno che p53 tira per primo: blocca le cicline e la duplicazione si ferma. Prima si ferma il nastro, poi si vede se il pezzo si può aggiustare."
+       }
+      },
+      {
+       "id": "q-u7-m4-03",
+       "testo": "Il danno non si ripara. Con quali proteine p53 fa eseguire la condanna?",
+       "opzioni": [
+        "PUMA, NOXA e BAX: via intrinseca",
+        "Con le NK, dall'esterno",
+        "Con l'MHC di classe I",
+        "Con i macrofagi del tessuto"
+       ],
+       "risposta": 1,
+       "spiegazione": "p53 non taglia niente di persona: induce le proteine pro-apoptotiche — PUMA, NOXA, BAX — cioè i sensori e gli esecutori della via intrinseca. Da lì la storia è quella che conosci: i guardiani vengono occupati, BAX e BAK bucano il mitocondrio, esce il citocromo c e le caspasi si accendono. Il danno al DNA entra dal nucleo ed esce dal mitocondrio.",
+       "perche_no": [
+        "",
+        "Le NK intervengono dall'esterno quando una cellula smette di esporre MHC-I: è la via estrinseca, non il braccio armato di p53.",
+        "L'MHC di classe I è la vetrina che mostra cosa produce la cellula, un canale del sistema immunitario, non un ordine interno.",
+        "I macrofagi arrivano dopo, a ritirare i pacchetti: non ricevono ordini da p53."
+       ],
+       "carta": {
+        "id": "c-puma",
+        "titolo": "PUMA e NOXA",
+        "categoria": "Molecole",
+        "icona": "dna",
+        "testo": "Il braccio armato di p53. Quando la riparazione fallisce, p53 li induce e loro vanno a occupare i guardiani del mitocondrio: da lì in poi la via intrinseca fa il resto."
+       }
+      }
+     ]
+    }
+   ],
+   "boss": {
+    "nome": "Il Professor Esaminatore",
+    "intro": [
+     "Le quattro missioni le hai superate. Complimenti.",
+     "Ma io non chiedo definizioni: quelle le ripete chiunque. Io chiedo di mettere insieme i pezzi.",
+     "Cinque domande. Ti avviso: sulla prima sbaglia quasi tutto il mondo."
+    ],
+    "vittoria": [
+     "Bene. Molto bene.",
+     "Hai capito la cosa che conta: nel tuo corpo la morte non è il contrario della vita. È uno dei suoi strumenti."
+    ],
+    "sconfitta": [
+     "Non ancora. Ma hai letto le spiegazioni, e questo vale più di una risposta indovinata. Torna."
+    ],
+    "domande": [
+     {
+      "id": "q-u7-b-01",
+      "testo": "L'intestino si rinnova in 4 giorni e non è un cancro. Cos'ha di diverso una cellula tumorale?",
+      "opzioni": [
+       "Cresce troppo in fretta",
+       "È troppo grande",
+       "Ha perso il DNA",
+       "Non sa più morire"
+      ],
+      "risposta": 4,
+      "spiegazione": "Quasi tutti rispondono «cresce troppo in fretta»: è quello che pensa gran parte del mondo, ed è l'errore giusto da fare. Ma le cellule del tuo intestino si rifanno da capo in quattro giorni e non sono un tumore, perché muoiono quando devono. La cellula tumorale ha fatto un'altra cosa: ha rotto il sistema che avrebbe dovuto ucciderla. Quello che la fa espandere è lo squilibrio fra chi entra e chi esce, non la sola velocità.",
+      "perche_no": [
+       "È la trappola: la velocità c'è, ma da sola non spiega niente, e la domanda te lo dice. L'intestino corre di più e non è un cancro. Conta il bilancio fra chi entra e chi esce, e in un tumore mancano le uscite.",
+       "Le dimensioni della singola cellula non c'entrano: il problema è quante ne restano vive quando avrebbero dovuto smontarsi.",
+       "Il DNA c'è eccome, ed è proprio il punto: è danneggiato e viene tramandato invece di essere eliminato.",
+       ""
+      ],
+      "carta": {
+       "id": "c-hela",
+       "titolo": "Cellule HeLa",
+       "categoria": "Storia",
+       "icona": "cellula",
+       "testo": "Henrietta Lacks è morta nel 1951, le sue cellule no: si dividono ancora oggi in ogni laboratorio del mondo, prelevate senza il suo consenso. Hanno realizzato il sogno dell'umanità, l'immortalità, dentro il corpo di una persona."
+      }
+     },
+     {
+      "id": "q-u7-b-02",
+      "testo": "Nell'Alzheimer, qual è il problema dell'apoptosi?",
+      "opzioni": [
+       "Ce n'è troppa: muoiono i sani",
+       "Manca del tutto",
+       "È diventata necrosi",
+       "Colpisce solo le cellule vecchie"
+      ],
+      "risposta": 1,
+      "spiegazione": "Nelle malattie neurodegenerative il sistema sbaglia dalla parte opposta rispetto al tumore: si suicidano cellule che dovevano restare. Quale programma esatto venga eseguito è ancora materia di ricerca; la direzione dell'errore, però, è chiara. E nel cervello il magazzino di ricambio è quasi vuoto: qualche nicchia di staminali esiste, nell'ippocampo, ma non basta a rimpiazzare i neuroni persi in una malattia neurodegenerativa. Un pezzo di intestino te lo rifai in quattro giorni; un neurone che se ne va, in pratica, non torna.",
+      "perche_no": [
+       "",
+       "Se l'apoptosi mancasse del tutto il rischio sarebbe quello opposto: cellule danneggiate che restano in giro a dividersi, cioè tumori.",
+       "Non è un semplice cambio di modalità: qui i neuroni non muoiono per un insulto esterno improvviso, ma attivando dall'interno programmi di morte cellulare, l'apoptosi e altre forme regolate scoperte più di recente. Il programma non è sbagliato: è eseguito quando non doveva esserlo.",
+       "L'età è un fattore di rischio, ma a morire sono popolazioni precise di neuroni, non genericamente «le cellule vecchie»."
+      ],
+      "carta": {
+       "id": "c-neuro",
+       "titolo": "Neurodegenerazione",
+       "categoria": "Clinica",
+       "icona": "cellula",
+       "testo": "L'altro estremo della bilancia: troppa apoptosi, nel posto sbagliato. Nel cervello adulto la sostituzione dei neuroni è quasi nulla: quello che se ne va, se ne va per sempre."
+      }
+     },
+     {
+      "id": "q-u7-b-03",
+      "testo": "La chemioterapia funziona soprattutto perché…",
+      "opzioni": [
+       "Scioglie la massa del tumore",
+       "Blocca il sangue al tumore",
+       "Colpisce chi si divide e lo spinge a suicidarsi",
+       "Uccide tutte le cellule uguale"
+      ],
+      "risposta": 3,
+      "spiegazione": "La chemio classica non scioglie niente: colpisce le cellule che si stanno dividendo, rompendo il DNA o bloccando il fuso mitotico, e poi chiede alla cellula di eseguire il proprio programma di suicidio. Per questo colpisce soprattutto chi corre: follicoli dei capelli, intestino, midollo osseo. Capelli che cadono, bocca infiammata e difese a terra non sono sfortuna: sono il calendario del ciclo cellulare. La nausea, invece, ha un'altra causa: la chemio stimola direttamente il centro del vomito nel tronco encefalico.",
+      "perche_no": [
+       "Nessun farmaco «scioglie» un tumore: la massa si riduce perché le cellule muoiono e vengono poi rimosse.",
+       "Bloccare i vasi del tumore si fa davvero, con i farmaci antiangiogenetici, ma è un'altra classe di terapie, non il meccanismo della chemio classica.",
+       "",
+       "Se colpisse tutte le cellule allo stesso modo non sarebbe utilizzabile: la sua limitata selettività sta proprio nel colpire chi si divide in fretta."
+      ],
+      "carta": {
+       "id": "c-chemio",
+       "titolo": "Chemioterapia",
+       "categoria": "Clinica",
+       "icona": "forbici",
+       "testo": "Non scioglie niente: colpisce chi si sta dividendo, DNA o fuso mitotico, e poi chiede alla cellula di suicidarsi. Capelli, intestino, midollo: gli effetti collaterali sono il calendario del ciclo cellulare."
+      }
+     },
+     {
+      "id": "q-u7-b-04",
+      "testo": "Marco, 34 anni, melanoma con p53 mutato. Terapia che rompe il DNA: che aspettarsi?",
+      "opzioni": [
+       "Meglio: il DNA è già fragile",
+       "Peggio: senza p53 manca l'ordine",
+       "Nulla: p53 non c'entra",
+       "Benissimo: risponde sempre"
+      ],
+      "risposta": 2,
+      "spiegazione": "Questa è la domanda tosta, e la risposta è controintuitiva. La terapia rompe il DNA, ma è p53 che legge quel danno e lo traduce in un ordine di suicidio. Se p53 è mutato il messaggio non arriva, e la cellula continua a dividersi portandosi dietro il danno. Esistono anche vie di morte indipendenti da p53, quindi non è un fallimento garantito, ma la sensibilità media cala. È esattamente per questo che la ricerca cerca farmaci che scavalchino p53.",
+      "perche_no": [
+       "Il danno al DNA da solo non uccide la cellula: serve qualcuno che lo trasformi in un ordine di suicidio, e quel qualcuno è proprio p53.",
+       "",
+       "p53 c'entra eccome: è l'anello che collega «DNA rotto» a «cellula che si smonta». Se rompi l'anello, la catena si interrompe lì.",
+       "Nessun tumore risponde «sempre» a un farmaco, e il melanoma è anzi noto per la sua resistenza alla chemioterapia classica."
+      ],
+      "carta": {
+       "id": "c-precisione",
+       "titolo": "Medicina di precisione",
+       "categoria": "Clinica",
+       "icona": "dna",
+       "testo": "Sapere quale gene è rotto cambia la terapia: se il messaggero p53 non c'è più, si cerca un farmaco che consegni l'ordine di morte per un'altra strada."
+      }
+     },
+     {
+      "id": "q-u7-b-05",
+      "testo": "Dopo un infarto dosiamo la troponina nel sangue. Che morte cellulare rivela?",
+      "opzioni": [
+       "Necrosi: il contenuto è uscito",
+       "Apoptosi: i pacchetti si sono aperti",
+       "Nessuna: è un ormone",
+       "Entrambe, allo stesso modo"
+      ],
+      "risposta": 1,
+      "spiegazione": "Tutta la diagnostica del danno d'organo si regge su un fatto solo: nella necrosi il materiale si riversa fuori, nell'apoptosi no. La troponina sta dentro le cellule del cuore; se la trovi nel sangue vuol dire che quelle cellule si sono rotte e hanno lasciato uscire il contenuto. È l'unica verità da cui discende tutto il resto della tabella: membrana rotta, contenuto fuori, infiammazione, e un esame del sangue che se ne accorge.",
+      "perche_no": [
+       "",
+       "Nell'apoptosi i corpi apoptotici restano sigillati e vengono ritirati interi dai macrofagi: proprio perché non esce niente, non lascia tracce nel sangue.",
+       "La troponina non è un ormone: è una proteina del meccanismo di contrazione del muscolo cardiaco, e in circolo non ci dovrebbe stare.",
+       "Le due morti si distinguono esattamente qui: una sporca e si vede negli esami, l'altra è silenziosa."
+      ],
+      "carta": {
+       "id": "c-troponina",
+       "titolo": "Troponina",
+       "categoria": "Clinica",
+       "icona": "cellula",
+       "testo": "Perché un esame del sangue vede un infarto: le cellule del cuore sono morte per necrosi e hanno lasciato uscire quello che avevano dentro. L'apoptosi, che tiene tutto chiuso, negli esami non si vede."
+      }
+     }
+    ]
+   },
+   "medaglia": {
+    "id": "med-genoma",
+    "nome": "Guardiano del Genoma"
+   }
+  }
+ ]
+}
+</script>
+<!-- ═══════════ FINE CONTENUTI — sotto c'è il motore, non toccarlo ═══════════ -->
+
+<script>
+"use strict";
+(function(){
+/* ══════════════════════════════════════════════════════════════════
+   1. COSTANTI E PALETTE
+   ══════════════════════════════════════════════════════════════════ */
+
+var LARG = 320, ALT = 208;   // risoluzione interna, scalata a numeri interi
+var TILE = 16;               // lato di una casella
+var PASSO = 8;               // frame per attraversare una casella
+var DIR = { su:[0,-1], giu:[0,1], sx:[-1,0], dx:[1,0] };
+
+// Palette a 24 colori. L'indice 0 è trasparente e non si disegna mai.
+// Armonizzata con illustrazioni.py del deck: ambra, petrolio, cremisi.
+var PAL = [
+  null,      // 0  trasparente
+  '#0f1420', // 1  inchiostro
+  '#1e2636', // 2  scuro
+  '#33415a', // 3  ombra fredda
+  '#5b6b85', // 4  grigio
+  '#92a0b8', // 5  grigio chiaro
+  '#cfd6e2', // 6  quasi bianco
+  '#f2efe6', // 7  carta
+  '#1d4a2e', // 8  verde scuro
+  '#2f7d43', // 9  verde
+  '#52a95c', // 10 verde chiaro
+  '#86c96e', // 11 verde luce
+  '#1f5d59', // 12 petrolio scuro
+  '#2e8480', // 13 petrolio
+  '#5fb3ad', // 14 petrolio chiaro
+  '#a35322', // 15 ambra scura
+  '#e4873a', // 16 ambra
+  '#f7c596', // 17 ambra chiara
+  '#8f2c2a', // 18 cremisi scuro
+  '#c43e3b', // 19 cremisi
+  '#eea5a3', // 20 cremisi chiaro
+  '#4a3524', // 21 terra scura
+  '#7a5a3a', // 22 terra
+  '#a8845c'  // 23 terra chiara
+];
+
+var C = {  // scorciatoie leggibili
+  ink:'#0f1420', scuro:'#1e2636', ombra:'#33415a', grigio:'#5b6b85',
+  chiaro:'#92a0b8', quasi:'#cfd6e2', carta:'#f2efe6',
+  verde:'#2f7d43', verdeC:'#52a95c',
+  teal:'#2e8480', tealC:'#5fb3ad', tealS:'#1f5d59',
+  ambra:'#e4873a', ambraC:'#f7c596', ambraS:'#a35322',
+  cremisi:'#c43e3b', cremisiC:'#eea5a3', cremisiS:'#8f2c2a',
+  terra:'#7a5a3a'
+};
+
+var COLORI_ZONA = {
+  verde:  C.verde, teal: C.teal, ambra: C.ambra,
+  cremisi:C.cremisi, viola: '#7a5aa8'
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   2. UTILITÀ
+   ══════════════════════════════════════════════════════════════════ */
+
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+
+// Generatore pseudocasuale seedato: serve SOLO a generare le mappe,
+// così la stessa zona viene identica a ogni avvio.
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    var t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+// djb2: firma compatta di una stringa. Serve a capire se la mappa
+// salvata è ancora la stessa di quella che stiamo per generare.
+function hash32(s){
+  var h = 5381;
+  for (var i=0;i<s.length;i++) h = ((h<<5)+h+s.charCodeAt(i))|0;
+  return (h>>>0).toString(36);
+}
+
+function elem(id){ return document.getElementById(id); }
+
+/* ══════════════════════════════════════════════════════════════════
+   3. TESTO — carattere di sistema, disegnato alla risoluzione vera
+   ══════════════════════════════════════════════════════════════════
+   Niente più caratteri costruiti pixel per pixel: a schermo pieno si
+   vedevano i blocchetti. Qui si usa un carattere vero, disegnato dal
+   browser alla risoluzione dello schermo, quindi nitido a ogni scala. */
+
+var FONT = (function(){
+  var PILA = '"Trebuchet MS", Verdana, "Segoe UI", system-ui, -apple-system, sans-serif';
+  var DIM = 9.4, INTER = 12;
+  var mis = document.createElement('canvas').getContext('2d');
+
+  function stile(dim, peso){ return (peso || 600) + ' ' + (dim || DIM) + 'px ' + PILA; }
+  mis.font = stile();
+
+  function misura(t, dim, peso){
+    if (dim || peso){
+      mis.font = stile(dim, peso);
+      var w = mis.measureText(String(t)).width;
+      mis.font = stile();
+      return w;
+    }
+    return mis.measureText(String(t)).width;
+  }
+
+  function scrivi(g, t, x, y, colore, dim, peso){
+    g.font = stile(dim, peso);
+    g.textBaseline = 'top';
+    g.fillStyle = colore || '#3a3a42';
+    g.fillText(String(t), x, y);
+  }
+
+  // Come scrivi, ma con un alone scuro dietro: serve quando il testo
+  // finisce sopra il paesaggio invece che dentro un riquadro.
+  function scriviRilievo(g, t, x, y, colore, dim){
+    g.save();
+    g.font = stile(dim);
+    g.textBaseline = 'top';
+    g.lineWidth = 2.4;
+    g.lineJoin = 'round';
+    g.strokeStyle = 'rgba(20,26,34,.75)';
+    g.strokeText(String(t), x, y);
+    g.fillStyle = colore || '#ffffff';
+    g.fillText(String(t), x, y);
+    g.restore();
+  }
+
+  // Manda a capo rispettando le parole; se una parola da sola non ci
+  // sta (capita con gli indirizzi, non con l'italiano) la spezza.
+  function spezza(testo, maxLarg, dim){
+    var parole = String(testo).split(' '), righe = [], corrente = '';
+    for (var i=0;i<parole.length;i++){
+      var p = parole[i];
+      var prova = corrente ? corrente + ' ' + p : p;
+      if (misura(prova, dim) <= maxLarg){ corrente = prova; continue; }
+      if (corrente){ righe.push(corrente); corrente = ''; }
+      while (misura(p, dim) > maxLarg && p.length > 1){
+        var taglio = p.length;
+        while (taglio > 1 && misura(p.slice(0, taglio), dim) > maxLarg) taglio--;
+        righe.push(p.slice(0, taglio));
+        p = p.slice(taglio);
+      }
+      corrente = p;
+    }
+    if (corrente) righe.push(corrente);
+    return righe.length ? righe : [''];
+  }
+
+  function pagine(testo, maxLarg, nRighe, dim){
+    var r = spezza(testo, maxLarg, dim), out = [];
+    for (var i=0;i<r.length;i+=nRighe) out.push(r.slice(i, i+nRighe));
+    return out.length ? out : [['']];
+  }
+
+  return { scrivi:scrivi, scriviRilievo:scriviRilievo, misura:misura,
+           spezza:spezza, pagine:pagine, alt:DIM, interlinea:INTER };
+})();
+
+/* ══════════════════════════════════════════════════════════════════
+   4. ARTE — personaggi e paesaggio disegnati a curve, non a quadretti
+   ══════════════════════════════════════════════════════════════════
+   Ogni cosa è disegnata con archi, sfumature e contorni morbidi, poi
+   cotta una volta sola in una tela di appoggio a risoluzione quadrupla.
+   Durante il gioco si ricopia soltanto: costa poco e resta smussata. */
+
+var SS = 8;                       // quante volte più fine della misura logica
+var SBAVA = 0.5;                  // le caselle si sovrappongono un filo:
+                                  // altrimenti fra l'una e l'altra resta
+                                  // una riga chiara e si vede la griglia
+var PERS_L = 16, PERS_A = 24;     // ingombro di un personaggio, in unità di gioco
+
+function tela(w,h){
+  var c = document.createElement('canvas');
+  c.width = Math.round(w*SS); c.height = Math.round(h*SS);
+  var g = c.getContext('2d');
+  g.scale(SS,SS);
+  g.lineJoin = 'round'; g.lineCap = 'round';
+  return { c:c, g:g };
+}
+
+function arrotondato(g,x,y,w,h,r){
+  r = Math.min(r, w/2, h/2);
+  g.beginPath();
+  g.moveTo(x+r,y);
+  g.arcTo(x+w,y,x+w,y+h,r);
+  g.arcTo(x+w,y+h,x,y+h,r);
+  g.arcTo(x,y+h,x,y,r);
+  g.arcTo(x,y,x+w,y,r);
+  g.closePath();
+}
+
+function ovale(g,cx,cy,rx,ry){
+  g.beginPath(); g.ellipse(cx,cy,rx,ry,0,0,6.283185); g.closePath();
+}
+
+function bordo(g,colore,spessore){
+  g.strokeStyle = colore; g.lineWidth = spessore || 0.7; g.stroke();
+}
+
+function sfuma(g,y0,y1,a,b){
+  var gr = g.createLinearGradient(0,y0,0,y1);
+  gr.addColorStop(0,a); gr.addColorStop(1,b);
+  return gr;
+}
+
+/* ── I personaggi ──────────────────────────────────────────────── */
+
+var VESTI = {
+  eroe: { k:'#2c3242', h:'#6b4527', H:'#9a6a3c', s:'#f6cda6', S:'#dda87c',
+          c:'#2f8a86', C:'#57b8b0', p:'#39415e', z:'#242a3a' },
+  npc1: { k:'#2c3242', h:'#8a3330', H:'#c25a52', s:'#f6cda6', S:'#dda87c',
+          c:'#7c5cae', C:'#a98adb', p:'#39415e', z:'#242a3a' },
+  npc2: { k:'#2c3242', h:'#2f3a58', H:'#54648c', s:'#eec39a', S:'#d09c70',
+          c:'#e08a3c', C:'#f6b877', p:'#4a3f2e', z:'#242a3a' },
+  npc3: { k:'#2c3242', h:'#245536', H:'#3d8a56', s:'#f8d3ae', S:'#e0ab82',
+          c:'#dfe4ec', C:'#ffffff', p:'#2f8a86', z:'#242a3a' },
+  npc4: { k:'#2c3242', h:'#3e2c1c', H:'#67492e', s:'#e6b284', S:'#c68e5e',
+          c:'#c9504a', C:'#ec857c', p:'#39415e', z:'#242a3a' },
+  prof: { k:'#2c3242', h:'#b7c0cd', H:'#e8eef6', s:'#f6cda6', S:'#dda87c',
+          c:'#f4f2ec', C:'#ffffff', p:'#414a68', z:'#242a3a', extra:'occhiali' },
+  bios: { k:'#22392f', h:'#1f6b4a', H:'#3fae74', s:'#f8d3ae', S:'#e0ab82',
+          c:'#f2f6f2', C:'#ffffff', p:'#237a72', z:'#17403c', extra:'foglie' }
+};
+
+function disegnaPersona(g, v, dir, frame){
+  var dietro = (dir === 'su'), lato = (dir === 'dx');
+  var d = (frame === 1) ? 1 : ((frame === 2) ? -1 : 0);
+
+  // ombra a terra
+  g.save(); g.globalAlpha = 0.22; g.fillStyle = '#16210f';
+  ovale(g, 8, 23.0, 4.4, 1.25); g.fill(); g.restore();
+
+  // gambe e scarpe
+  var gx = lato ? 0.6 : 0;
+  g.fillStyle = v.p;
+  arrotondato(g, 5.5 + d*0.6 + gx, 17.8, 2.4, 4.4, 1.0); g.fill(); bordo(g, v.k);
+  arrotondato(g, 8.1 - d*0.6 - gx, 17.8, 2.4, 4.4, 1.0); g.fill(); bordo(g, v.k);
+  g.fillStyle = v.z;
+  arrotondato(g, 5.2 + d*0.6 + gx, 20.9, 2.9, 1.9, 0.85); g.fill(); bordo(g, v.k);
+  arrotondato(g, 7.9 - d*0.6 - gx, 20.9, 2.9, 1.9, 0.85); g.fill(); bordo(g, v.k);
+
+  // busto
+  g.fillStyle = sfuma(g, 12.2, 19.4, v.C, v.c);
+  arrotondato(g, 3.7, 12.2, 8.6, 7.0, 2.5); g.fill(); bordo(g, v.k);
+  if (!dietro && !lato){                       // colletto
+    g.fillStyle = 'rgba(255,255,255,.35)';
+    g.beginPath(); g.moveTo(6.6,12.4); g.lineTo(8,14.1); g.lineTo(9.4,12.4);
+    g.closePath(); g.fill();
+  }
+
+  // braccia
+  g.fillStyle = v.c;
+  arrotondato(g, 2.5, 13.2, 2.2, 4.6, 1.05); g.fill(); bordo(g, v.k);
+  arrotondato(g, 11.3, 13.2, 2.2, 4.6, 1.05); g.fill(); bordo(g, v.k);
+  g.fillStyle = v.s;
+  ovale(g, 3.6, 18.1, 1.05, 1.0); g.fill(); bordo(g, v.k, 0.6);
+  ovale(g, 12.4, 18.1, 1.05, 1.0); g.fill(); bordo(g, v.k, 0.6);
+
+  // capelli dietro alla testa
+  g.fillStyle = sfuma(g, 2, 13, v.H, v.h);
+  ovale(g, 8, 8.0, 6.1, 6.3); g.fill(); bordo(g, v.k);
+
+  if (!dietro){
+    // viso
+    g.fillStyle = sfuma(g, 3.5, 14, v.s, v.S);
+    ovale(g, 8, 8.9, 5.2, 5.4); g.fill(); bordo(g, v.k, 0.6);
+
+    // Frangia a ciocche: senza le punte i capelli sembrano un casco.
+    g.fillStyle = sfuma(g, 2.4, 9, v.H, v.h);
+    g.beginPath();
+    g.moveTo(2.8, 8.4);
+    g.bezierCurveTo(2.5, 2.4, 13.5, 2.4, 13.2, 8.4);
+    g.lineTo(12.2, 6.0); g.lineTo(11.2, 7.6);
+    g.lineTo(10.2, 5.2); g.lineTo(8.9, 7.0);
+    g.lineTo(7.7, 4.9); g.lineTo(6.3, 7.2);
+    g.lineTo(5.2, 5.4); g.lineTo(4.1, 7.4);
+    g.closePath(); g.fill(); bordo(g, v.k, 0.6);
+    // riflesso
+    g.save(); g.globalAlpha = 0.45; g.fillStyle = '#ffffff';
+    ovale(g, 5.6, 4.6, 2.0, 0.9); g.fill(); g.restore();
+
+    // occhi
+    var ox = lato ? 1.6 : 0;
+    g.fillStyle = '#2b3040';
+    ovale(g, 6.0 + ox, 9.7, 0.85, 1.15); g.fill();
+    if (!lato){ ovale(g, 10.0, 9.7, 0.85, 1.15); g.fill(); }
+    g.fillStyle = '#ffffff';
+    ovale(g, 5.75 + ox, 9.3, 0.32, 0.42); g.fill();
+    if (!lato){ ovale(g, 9.75, 9.3, 0.32, 0.42); g.fill(); }
+    // guance
+    g.save(); g.globalAlpha = 0.30; g.fillStyle = '#e08a86';
+    ovale(g, 4.7 + ox*0.5, 11.0, 0.9, 0.55); g.fill();
+    if (!lato){ ovale(g, 11.3, 11.0, 0.9, 0.55); g.fill(); }
+    g.restore();
+  } else {
+    // Di spalle: capelli con la scriminatura e le punte sul collo,
+    // altrimenti la nuca è una macchia e basta.
+    g.save(); g.globalAlpha = 0.55; g.fillStyle = v.H;
+    ovale(g, 6.3, 5.6, 2.6, 1.5); g.fill(); g.restore();
+    g.strokeStyle = 'rgba(0,0,0,.22)'; g.lineWidth = 0.5;
+    g.beginPath(); g.moveTo(8, 2.4); g.quadraticCurveTo(9.4, 7, 8.6, 12.6); g.stroke();
+    g.fillStyle = v.h;
+    g.beginPath();
+    g.moveTo(3.2, 10.4);
+    g.lineTo(4.4, 13.2); g.lineTo(5.6, 10.8); g.lineTo(7.0, 13.6);
+    g.lineTo(8.4, 10.8); g.lineTo(9.8, 13.4); g.lineTo(11.2, 10.6);
+    g.lineTo(12.8, 12.6); g.lineTo(12.8, 9.6); g.lineTo(3.2, 9.6);
+    g.closePath(); g.fill(); bordo(g, v.k, 0.5);
+  }
+
+  // segni particolari
+  if (v.extra === 'occhiali' && !dietro){
+    g.strokeStyle = '#3a4152'; g.lineWidth = 0.55;
+    ovale(g, 6.0, 9.6, 1.7, 1.5); g.stroke();
+    ovale(g, 10.0, 9.6, 1.7, 1.5); g.stroke();
+    g.beginPath(); g.moveTo(7.7,9.5); g.lineTo(8.3,9.5); g.stroke();
+    g.save(); g.globalAlpha = 0.35; g.fillStyle = '#cfeaff';
+    ovale(g, 6.0, 9.6, 1.6, 1.4); g.fill();
+    ovale(g, 10.0, 9.6, 1.6, 1.4); g.fill(); g.restore();
+  }
+  if (v.extra === 'foglie'){
+    // corona di foglie: Bìos è la biologia, e si vede
+    var foglie = [[4.2,4.4,-0.9],[6.2,2.9,-0.4],[8.0,2.4,0],[9.8,2.9,0.4],[11.8,4.4,0.9]];
+    for (var i=0;i<foglie.length;i++){
+      g.save();
+      g.translate(foglie[i][0], foglie[i][1]);
+      g.rotate(foglie[i][2]);
+      g.fillStyle = sfuma(g, -2, 1, '#7fe2a4', '#2f9a63');
+      g.beginPath();
+      g.moveTo(0, 1.4);
+      g.bezierCurveTo(-1.5, 0.2, -1.2, -1.9, 0, -2.6);
+      g.bezierCurveTo(1.2, -1.9, 1.5, 0.2, 0, 1.4);
+      g.closePath(); g.fill(); bordo(g, '#1d5c3c', 0.45);
+      g.restore();
+    }
+  }
+}
+
+var ATTORI = {};
+function attore(nome){
+  if (ATTORI[nome]) return ATTORI[nome];
+  var v = VESTI[nome] || VESTI.eroe;
+  var a = { giu:[], su:[], dx:[], sx:[] };
+  for (var f=0; f<3; f++){
+    ['giu','su','dx'].forEach(function(dir){
+      var t = tela(PERS_L, PERS_A);
+      disegnaPersona(t.g, v, dir, f);
+      a[dir].push(t.c);
+    });
+    var m = tela(PERS_L, PERS_A);
+    m.g.translate(PERS_L, 0); m.g.scale(-1, 1);
+    m.g.drawImage(a.dx[f], 0, 0, PERS_L, PERS_A);
+    a.sx.push(m.c);
+  }
+  ATTORI[nome] = a;
+  return a;
+}
+
+function spriteDietro(){ return attore('eroe').su[0]; }
+
+/* ── Il paesaggio ──────────────────────────────────────────────── */
+
+var TEMI = {
+  bosco: {
+    erba:'#7ba85f',  erbaS:'#639049', erbaC:'#96c176', erbaL:'#b3d894',
+    terra:'#cbb894', terraS:'#ab9670', terraO:'#8a7757',
+    pietra:'#c2c6bf', pietraS:'#959a92', pietraO:'#6d726c',
+    acqua:'#5f9ecb', acquaC:'#9fcbe6', acquaS:'#3f7aa8',
+    tronco:'#8a6c4c', troncoS:'#5f4630',
+    chioma:'#4f8a4a', chiomaC:'#74ab63', chiomaL:'#9bcb80', chiomaO:'#33633a'
+  }
+};
+
+var UIC = {
+  bordo:'#39404e', filo:'#ffffff',
+  fondo:'#fbfaf5', fondo2:'#e4e6dd',
+  testo:'#333a45', testoTenue:'#78808c',
+  hpVerde:'#5cc95f', hpGiallo:'#e6c243', hpRosso:'#df5f52', hpFondo:'#4e5560',
+  etichetta:'#c08a1e', blu:'#4f9ad8'
+};
+
+function costruisciCaselle(tema){
+  var T = TEMI[tema] || TEMI.bosco;
+  var out = {}, r = mulberry32(9137), t;
+
+  function macchie(g, n, col, alfa, rmin, rmax){
+    g.save(); g.globalAlpha = alfa; g.fillStyle = col;
+    for (var i=0;i<n;i++){
+      var rr = rmin + r()*(rmax-rmin);
+      ovale(g, r()*16, r()*16, rr, rr*(0.55+r()*0.4)); g.fill();
+    }
+    g.restore();
+  }
+  function fili(g, n, col, alfa){
+    g.save(); g.globalAlpha = alfa; g.strokeStyle = col; g.lineWidth = 0.55;
+    for (var i=0;i<n;i++){
+      var x = r()*16, y = 3 + r()*13;
+      g.beginPath(); g.moveTo(x, y);
+      g.quadraticCurveTo(x + 0.5, y - 1.4, x + 1.3, y - 2.4);
+      g.stroke();
+    }
+    g.restore();
+  }
+
+  // Prato: sfumatura di fondo, macchie morbide, qualche filo d'erba.
+  // Fondo PIENO, non sfumato: una sfumatura dentro il tassello, ripetuta
+  // su tutta la mappa, diventa una fascia orizzontale che si vede subito.
+  function prato(fili_n){
+    var q = tela(16,16), g = q.g;
+    g.fillStyle = T.erba; g.fillRect(0,0,16,16);
+    macchie(g, 7, T.erbaS, 0.28, 1.6, 3.4);
+    macchie(g, 5, T.erbaL, 0.24, 1.2, 2.6);
+    fili(g, fili_n, T.erbaL, 0.55);
+    return q.c;
+  }
+  out.erba1 = prato(3); out.erba2 = prato(2); out.erba3 = prato(4);
+  out.erba = out.erba1;
+
+  t = tela(16,16);
+  t.g.drawImage(out.erba1, 0,0,16,16);
+  [[4,5,'#f6f2e4'],[11,10,'#e79ab6'],[7,13,'#f2cf7a']].forEach(function(f){
+    var g = t.g;
+    g.fillStyle = f[2];
+    for (var k=0;k<5;k++){
+      var a = k*1.2566;
+      ovale(g, f[0]+Math.cos(a)*1.05, f[1]+Math.sin(a)*1.05, 0.85, 0.85); g.fill();
+    }
+    g.fillStyle = '#f7d24a'; ovale(g, f[0], f[1], 0.65, 0.65); g.fill();
+  });
+  out.fiori = t.c;
+
+  // Erba dello studio: più scura e più alta, si vede da lontano.
+  t = tela(16,16);
+  (function(g){
+    g.fillStyle = '#537f45'; g.fillRect(0,0,16,16);
+    macchie(g, 8, '#3d6334', 0.32, 1.6, 3.2);
+    g.lineCap = 'round';
+    for (var i=0;i<22;i++){
+      var x = r()*16, h = 5 + r()*7, y = 16 - r()*3;
+      g.strokeStyle = (i%3===0) ? T.chiomaL : (i%2 ? '#5b8f4d' : '#4a7a41');
+      g.lineWidth = 0.85;
+      g.beginPath(); g.moveTo(x, y);
+      g.quadraticCurveTo(x + (r()-0.5)*2.2, y - h*0.6, x + (r()-0.5)*3.4, y - h);
+      g.stroke();
+    }
+  })(t.g);
+  out.erbaAlta = t.c;
+
+  // Sentiero di terra battuta.
+  t = tela(16,16);
+  (function(g){
+    g.fillStyle = T.terra; g.fillRect(0,0,16,16);
+    macchie(g, 9, T.terraO, 0.20, 1.2, 2.8);
+    macchie(g, 5, '#e0cfa8', 0.22, 1.4, 3.0);
+    g.save(); g.globalAlpha = 0.5;
+    for (var i=0;i<7;i++){
+      var x = r()*16, y = r()*16, rr = 0.5 + r()*0.7;
+      g.fillStyle = T.terraO; ovale(g,x,y,rr,rr*0.7); g.fill();
+      g.fillStyle = '#f0e2c6'; ovale(g,x-0.15,y-0.25,rr*0.6,rr*0.4); g.fill();
+    }
+    g.restore();
+  })(t.g);
+  out.sentiero = t.c;
+
+  // Bordi morbidi del sentiero verso il prato.
+  out.bordo = {};
+  [['su',0],['giu',1],['sx',2],['dx',3]].forEach(function(l){
+    var q = tela(16,16), g = q.g;
+    g.save();
+    g.translate(8,8); g.rotate(l[1]*1.5708); g.translate(-8,-8);
+    var gr = g.createLinearGradient(0,0,0,5);
+    gr.addColorStop(0,'rgba(110,95,68,.55)'); gr.addColorStop(1,'rgba(110,95,68,0)');
+    g.fillStyle = gr; g.fillRect(-1,-1,18,5.5);
+    g.restore();
+    out.bordo[l[0]] = q.c;
+  });
+
+  // Siepe di confine.
+  t = tela(16,16);
+  (function(g){
+    g.fillStyle = '#427a45'; g.fillRect(0,0,16,16);
+    macchie(g, 10, T.chiomaC, 0.38, 1.8, 3.4);
+    macchie(g, 6, T.chiomaO, 0.35, 1.4, 2.8);
+    g.fillStyle = 'rgba(255,255,255,.20)';
+    arrotondato(g, 0.5, 0.5, 15, 4, 2); g.fill();
+    g.fillStyle = 'rgba(20,40,22,.35)'; g.fillRect(0,13.5,16,2.5);
+  })(t.g);
+  out.siepe = t.c;
+
+  // Roccia.
+  t = tela(16,16);
+  t.g.drawImage(out.erba1, 0,0,16,16);
+  (function(g){
+    g.fillStyle = sfuma(g,3,14,T.pietra,T.pietraO);
+    g.beginPath();
+    g.moveTo(2.5,13.5); g.lineTo(3.5,7); g.lineTo(6,4.5);
+    g.lineTo(10.5,4.8); g.lineTo(13.5,8.5); g.lineTo(13,13.5);
+    g.closePath(); g.fill(); bordo(g,'#5d6260',0.6);
+    g.fillStyle = 'rgba(255,255,255,.30)';
+    g.beginPath(); g.moveTo(4,7.2); g.lineTo(6.2,5); g.lineTo(8.6,5.6);
+    g.lineTo(6,8.4); g.closePath(); g.fill();
+    g.save(); g.globalAlpha=.25; g.fillStyle='#2f3630';
+    ovale(g,8,14,5.6,1.2); g.fill(); g.restore();
+  })(t.g);
+  out.roccia = t.c;
+
+  // Acqua: due fotogrammi con onde morbide.
+  out.acqua = [];
+  for (var f=0; f<2; f++){
+    t = tela(16,16);
+    (function(g, f){
+      g.fillStyle = sfuma(g,0,16,T.acquaC,T.acqua); g.fillRect(0,0,16,16);
+      g.save(); g.globalAlpha = 0.55;
+      for (var i=0;i<4;i++){
+        var y = 2 + i*4 + (f?1.6:0);
+        g.strokeStyle = i%2 ? T.acquaS : '#ffffff';
+        g.lineWidth = 0.9;
+        g.beginPath();
+        g.moveTo(-1, y);
+        for (var x=-1; x<=17; x+=4) g.quadraticCurveTo(x+1, y-1.1, x+2, y);
+        g.stroke();
+      }
+      g.restore();
+      g.save(); g.globalAlpha = 0.75; g.fillStyle = '#ffffff';
+      ovale(g, f?11:4, f?4:11, 1.5, 0.5); g.fill();
+      g.restore();
+    })(t.g, f);
+    out.acqua.push(t.c);
+  }
+
+  // Piazzola della missione: lastra che arriva al bordo, così quattro
+  // caselle accostate formano un unico pavimento e non quattro mattonelle.
+  t = tela(16,16);
+  (function(g){
+    g.fillStyle = sfuma(g,0,16,'#d9dcd4','#b0b5ac'); g.fillRect(0,0,16,16);
+    macchie(g, 6, '#c2c7be', 0.5, 1.6, 3.4);
+    g.save(); g.globalAlpha = 0.35;
+    g.strokeStyle = '#8d938a'; g.lineWidth = 0.6;
+    g.beginPath(); g.moveTo(0,8.2); g.lineTo(16,8.2); g.stroke();
+    g.beginPath(); g.moveTo(8.2,0); g.lineTo(8.2,16); g.stroke();
+    g.restore();
+    g.fillStyle = 'rgba(255,255,255,.30)'; g.fillRect(0,0,16,1.6);
+  })(t.g);
+  out.piazzola = t.c;
+
+  // Pavimento dell'arena.
+  t = tela(16,16);
+  (function(g){
+    g.fillStyle = sfuma(g,0,16,'#5b5266','#3f3849'); g.fillRect(0,0,16,16);
+    g.strokeStyle = 'rgba(255,255,255,.12)'; g.lineWidth = 0.6;
+    g.strokeRect(0.6,0.6,14.8,14.8);
+    macchie(g, 5, '#6f6480', 0.30, 1.2, 2.4);
+  })(t.g);
+  out.arena = t.c;
+
+  // Cancello chiuso.
+  t = tela(16,16);
+  (function(g){
+    g.fillStyle = 'rgba(40,44,56,.55)'; g.fillRect(0,0,16,16);
+    for (var x=1.4;x<15;x+=4.2){
+      g.fillStyle = sfuma(g,0,16,'#dfe4ea','#8d949e');
+      arrotondato(g,x,0,2.1,16,1); g.fill(); bordo(g,'#565d68',0.5);
+    }
+    [4.6, 11].forEach(function(y){
+      g.fillStyle = sfuma(g,y,y+2.4,'#dfe4ea','#8d949e');
+      arrotondato(g,0,y,16,2.4,1); g.fill(); bordo(g,'#565d68',0.5);
+    });
+    g.fillStyle = sfuma(g,6,11,'#f0c24e','#b4802a');
+    arrotondato(g,5.8,7.4,4.4,4,1.2); g.fill(); bordo(g,'#7d5a1c',0.6);
+    g.strokeStyle = '#b4802a'; g.lineWidth = 0.9;
+    g.beginPath(); g.arc(8,7.2,1.5,3.14,6.28); g.stroke();
+    g.fillStyle = '#7d5a1c'; ovale(g,8,9.2,0.55,0.7); g.fill();
+  })(t.g);
+  out.cancello = t.c;
+
+  return out;
+}
+
+// Oggetti alti: si disegnano insieme ai personaggi, in ordine di
+// profondità, così ci si passa dietro.
+function costruisciAlti(tema){
+  var T = TEMI[tema] || TEMI.bosco;
+  var out = {}, r = mulberry32(4242), t;
+
+  // Albero: due caselle di lato, chioma a più strati, luce da sinistra.
+  t = tela(32,32);
+  (function(g){
+    g.save(); g.globalAlpha = 0.25; g.fillStyle = '#26331f';
+    ovale(g, 16, 29, 9, 2.4); g.fill(); g.restore();
+
+    g.fillStyle = sfuma(g,20,31,T.tronco,T.troncoS);
+    g.beginPath();
+    g.moveTo(13.6,30); g.lineTo(14.4,19); g.lineTo(17.6,19); g.lineTo(18.4,30);
+    g.closePath(); g.fill(); bordo(g,'#4a351f',0.7);
+    g.strokeStyle = 'rgba(255,255,255,.18)'; g.lineWidth = 0.7;
+    g.beginPath(); g.moveTo(15.2,28.5); g.lineTo(15.6,20); g.stroke();
+
+    var gruppi = [[16,14,12,10.5],[9,15,7,6],[23,15,7,6],[13,8,6.5,5.5],[20,9,6,5]];
+    g.fillStyle = T.chiomaO;
+    gruppi.forEach(function(c){ ovale(g,c[0],c[1]+0.8,c[2],c[3]); g.fill(); });
+    g.fillStyle = T.chioma;
+    gruppi.forEach(function(c){ ovale(g,c[0],c[1],c[2]*0.95,c[3]*0.95); g.fill(); });
+    g.save(); g.globalAlpha = 0.85; g.fillStyle = T.chiomaC;
+    [[13,12,8,6.4],[9.5,13.5,5,4],[19,11,5.5,4.4]].forEach(function(c){
+      ovale(g,c[0],c[1],c[2],c[3]); g.fill();
+    });
+    g.restore();
+    g.save(); g.globalAlpha = 0.7; g.fillStyle = T.chiomaL;
+    [[11.5,9.5,4.4,3.2],[15,7.5,3,2.2]].forEach(function(c){
+      ovale(g,c[0],c[1],c[2],c[3]); g.fill();
+    });
+    g.restore();
+    // frastaglio del bordo
+    g.fillStyle = T.chiomaO;
+    g.save(); g.globalAlpha = 0.5;
+    for (var i=0;i<26;i++){
+      var a = r()*6.283, rr = 10 + r()*2.2;
+      ovale(g, 16 + Math.cos(a)*rr, 14 + Math.sin(a)*rr*0.85, 1.5, 1.2); g.fill();
+    }
+    g.restore();
+  })(t.g);
+  out.albero = { img:t.c, dx:-8, dy:-16, w:32, h:32 };
+
+  // Cartello di legno.
+  t = tela(16,24);
+  (function(g){
+    g.save(); g.globalAlpha = 0.22; g.fillStyle = '#26331f';
+    ovale(g, 8, 22.6, 3.6, 1.1); g.fill(); g.restore();
+    g.fillStyle = sfuma(g,14,23,T.tronco,T.troncoS);
+    arrotondato(g,7,13,2.2,10,0.7); g.fill(); bordo(g,'#4a351f',0.6);
+    g.fillStyle = sfuma(g,3,15,'#e2c79a','#b9975f');
+    arrotondato(g,1.2,3,13.6,11,1.6); g.fill(); bordo(g,'#7d5f36',0.8);
+    g.strokeStyle = 'rgba(110,80,45,.75)'; g.lineWidth = 0.7;
+    [6.2, 8.6, 11].forEach(function(y){
+      g.beginPath(); g.moveTo(3.4,y); g.lineTo(y===11?10:12.6,y); g.stroke();
+    });
+  })(t.g);
+  out.cartello = { img:t.c, dx:0, dy:-8, w:16, h:24 };
+
+  return out;
+}
+
+/* ── Icone delle carte conoscenza ──────────────────────────────── */
+function costruisciIcone(){
+  var o = {}, t;
+
+  t = tela(16,16);                       // cellula
+  (function(g){
+    g.fillStyle = sfuma(g,2,15,'#8fdcd6','#2f8a86');
+    ovale(g,8,8.5,6.2,5.8); g.fill(); bordo(g,'#1d5f5c',0.7);
+    g.fillStyle = 'rgba(255,255,255,.35)'; ovale(g,6,6,2.6,2); g.fill();
+    g.fillStyle = '#1d5f5c'; ovale(g,9,9.4,2.2,2); g.fill();
+  })(t.g);
+  o.cellula = t.c;
+
+  t = tela(16,16);                       // doppia elica
+  (function(g){
+    g.lineCap='round';
+    for (var s=0;s<2;s++){
+      g.strokeStyle = s ? '#e79a45' : '#c96f22'; g.lineWidth = 1.5;
+      g.beginPath();
+      for (var y=1;y<=15;y+=0.5){
+        var x = 8 + Math.sin(y*0.62 + s*3.14)*4.4;
+        if (y===1) g.moveTo(x,y); else g.lineTo(x,y);
+      }
+      g.stroke();
+    }
+    g.strokeStyle = 'rgba(200,120,40,.6)'; g.lineWidth = 0.8;
+    for (var y2=3;y2<15;y2+=3){
+      var a = 8 + Math.sin(y2*0.62)*4.4, b = 8 + Math.sin(y2*0.62+3.14)*4.4;
+      g.beginPath(); g.moveTo(a,y2); g.lineTo(b,y2); g.stroke();
+    }
+  })(t.g);
+  o.dna = t.c;
+
+  t = tela(16,16);                       // mitocondrio
+  (function(g){
+    g.fillStyle = sfuma(g,3,13,'#ef8f88','#b9433c');
+    ovale(g,8,8,7,4.4); g.fill(); bordo(g,'#8d2f2a',0.7);
+    g.strokeStyle = '#8d2f2a'; g.lineWidth = 0.9;
+    for (var i=-2;i<=2;i++){
+      g.beginPath();
+      g.moveTo(8+i*2.4, 4.4);
+      g.quadraticCurveTo(8+i*2.4+1.4, 8, 8+i*2.4, 11.6);
+      g.stroke();
+    }
+  })(t.g);
+  o.mito = t.c;
+
+  t = tela(16,16);                       // forbici
+  (function(g){
+    g.strokeStyle = '#aeb6c2'; g.lineWidth = 1.6; g.lineCap='round';
+    g.beginPath(); g.moveTo(3.5,2.5); g.lineTo(11,11); g.stroke();
+    g.beginPath(); g.moveTo(12.5,2.5); g.lineTo(5,11); g.stroke();
+    g.strokeStyle = '#7c8492'; g.lineWidth = 1.2;
+    g.beginPath(); g.arc(5.6,12.8,2.1,0,6.283); g.stroke();
+    g.beginPath(); g.arc(10.4,12.8,2.1,0,6.283); g.stroke();
+    g.fillStyle = '#dfe4ea'; ovale(g,8,7.4,0.9,0.9); g.fill();
+  })(t.g);
+  o.forbici = t.c;
+
+  t = tela(16,16);                       // scudo
+  (function(g){
+    g.fillStyle = sfuma(g,2,15,'#8fd08a','#3f8a46');
+    g.beginPath();
+    g.moveTo(8,1.6); g.lineTo(14,4); g.lineTo(14,8.6);
+    g.bezierCurveTo(14,12, 11,14.2, 8,15.2);
+    g.bezierCurveTo(5,14.2, 2,12, 2,8.6);
+    g.lineTo(2,4); g.closePath(); g.fill(); bordo(g,'#2b6431',0.8);
+    g.strokeStyle = '#ffffff'; g.lineWidth = 1.6; g.lineCap='round';
+    g.beginPath(); g.moveTo(5.4,8.2); g.lineTo(7.3,10.4); g.lineTo(10.8,5.6); g.stroke();
+  })(t.g);
+  o.scudo = t.c;
+
+  return o;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   5. IL MONDO — la piantina della zona
+   ══════════════════════════════════════════════════════════════════
+   La mappa è una piantina leggibile a occhio: ogni carattere è una
+   casella. Il giocatore entra dal basso (P) e sale.
+
+     .  erba          ,  erba fiorita     E  erba dello studio
+     -  sentiero      #  siepe            T  albero
+     R  roccia        ~  acqua            C  cartello
+     X  cancello (si apre superando la missione che sta sotto)
+     1..4 piazzola di missione            b  piazzola del boss
+     P  punto di ingresso del giocatore
+
+   I cancelli si aprono dal basso verso l'alto: il più in basso è
+   quello della Missione 1. Aggiungere una missione significa
+   aggiungere una piazzola e un cancello a questa piantina. */
+
+var PIANTINA = [
+'##########################',
+'#TT##################TT###',
+'#T....BBBBBBBBBBBB....T..#',
+'#.....BBBB-bb-BBBB.....R.#',
+'#..T..BBBB-bb-BBBB..T....#',
+'#.....BBBB----BBBB.......#',
+'#..R..BBBB----BBBB....T..#',
+'#.........----...........#',
+'#.T.......----.......T...#',
+'#....,....----....,......#',
+'#...TT....----....TT.....#',
+'#.........XXXX...........#',
+'#....R....-44-....R......#',
+'#.T.......-44-.......T...#',
+'#~~~~.....----.....~~~~..#',
+'#~~~~.EEE.----.EEE.~~~~..#',
+'#~~~~.EEE.----.EEE.~~~~..#',
+'#.........XXXX...........#',
+'#...TT....-33-....TT.....#',
+'#.........-33-...........#',
+'#....R....----....R......#',
+'#.T.......XXXX.......T...#',
+'#.........-22-...........#',
+'#...TT....-22-....TT.....#',
+'#....,....----....,......#',
+'#..EEE....XXXX....EEE....#',
+'#..EEE....----....EEE....#',
+'#.........-11-...........#',
+'#...T.....-11-.....T.....#',
+'#........G----...........#',
+'#....C....-PP-....R......#',
+'##########################'
+];
+
+// Quali caselle si attraversano e quali no.
+var SOLIDI = { '#':1, 'T':1, 'R':1, '~':1, 'C':1, 'B':1, 'X':1 };
+
+// Carattere della piantina -> casella del terreno.
+var CASELLA_DI = {
+  '.':'erba', ',':'fiori', 'E':'erbaAlta', '-':'sentiero', 'P':'sentiero',
+  '#':'siepe', 'T':'erba', 'R':'roccia', '~':'acqua', 'C':'erba', 'G':'erba',
+  'X':'cancello', 'B':'siepe', 'b':'arena',
+  '1':'piazzola', '2':'piazzola', '3':'piazzola', '4':'piazzola'
+};
+
+// Caselle su cui poggia un oggetto alto, disegnato insieme ai personaggi.
+var ALTO_DI = { 'T':'albero', 'C':'cartello' };
+
+// Caselle che si considerano "sentiero" per il calcolo dei bordi.
+var E_SENTIERO = { '-':1, 'P':1, '1':1, '2':1, '3':1, '4':1 };
+
+var Mondo = {
+  larg:0, alt:0, griglia:null, solido:null,
+  base:null,                 // canvas con la zona già dipinta
+  acquaCelle:[],             // caselle animate, ridipinte a ogni frame
+  cancelli:[],               // { tx, ty, missione }
+  npc:[], spawn:{tx:12,ty:29}, caselle:null, firma:''
+};
+
+function costruisciZona(unita){
+  var righe = PIANTINA;
+  var L = righe[0].length, A = righe.length;
+
+  // Controllo di sanità: una piantina storta si vede subito, ma meglio dirlo.
+  for (var i=0;i<A;i++){
+    if (righe[i].length !== L)
+      throw new Error('La piantina ha la riga ' + (i+1) + ' lunga ' +
+        righe[i].length + ' invece di ' + L + '.');
+  }
+
+  Mondo.larg = L; Mondo.alt = A;
+  Mondo.griglia = righe;
+  Mondo.solido = new Uint8Array(L*A);
+  Mondo.acquaCelle = [];
+  Mondo.cancelli = [];
+  Mondo.npc = [];
+  Mondo.caselle = costruisciCaselle(unita.tema || 'bosco');
+  Mondo.disegniAlti = costruisciAlti(unita.tema || 'bosco');
+  Mondo.alti = [];
+
+  var piazzole = {};      // numero missione -> {tx,ty} (la casella più in alto)
+  var bossPad = null, spawnTrovato = false, guidaPos = null;
+
+  for (var y=0;y<A;y++) for (var x=0;x<L;x++){
+    var ch = righe[y].charAt(x);
+    Mondo.solido[y*L+x] = SOLIDI[ch] ? 1 : 0;
+    if (ch === '~') Mondo.acquaCelle.push([x,y]);
+    if (ALTO_DI[ch]) Mondo.alti.push({ tx:x, ty:y, tipo:ALTO_DI[ch] });
+    if (ch === 'P' && !spawnTrovato){ Mondo.spawn = { tx:x, ty:y }; spawnTrovato = true; }
+    if (ch >= '1' && ch <= '9'){
+      var n = +ch;
+      if (!piazzole[n]) piazzole[n] = { tx:x, ty:y };
+    }
+    if (ch === 'b' && !bossPad) bossPad = { tx:x, ty:y };
+    if (ch === 'G') guidaPos = { tx:x, ty:y };
+    if (ch === 'X') Mondo.cancelli.push({ tx:x, ty:y, missione:-1 });
+  }
+
+  // I cancelli si assegnano alle missioni dal basso verso l'alto.
+  var perRiga = {};
+  Mondo.cancelli.forEach(function(c){ (perRiga[c.ty] = perRiga[c.ty] || []).push(c); });
+  var righeCancello = Object.keys(perRiga).map(Number).sort(function(a,b){ return b-a; });
+  righeCancello.forEach(function(ty, i){
+    perRiga[ty].forEach(function(c){ c.missione = i; });
+  });
+
+  // Gli esaminatori stanno sulla loro piazzola.
+  var missioni = unita.missioni || [];
+  for (var m=0;m<missioni.length;m++){
+    var p = piazzole[m+1];
+    if (!p) throw new Error('Nella piantina manca la piazzola numero ' + (m+1) +
+      ' per la missione "' + (missioni[m].titolo || '') + '". Aggiungi le caselle "' +
+      (m+1) + '" alla piantina, oppure togli una missione.');
+    Mondo.npc.push({
+      tipo:'missione', indice:m, tx:p.tx, ty:p.ty, dir:'giu',
+      veste:'npc' + (((missioni[m].npc && missioni[m].npc.aspetto) || (m+1)) % 4 + 1),
+      nome:(missioni[m].npc && missioni[m].npc.nome) || 'Esaminatore'
+    });
+  }
+  if (unita.boss && bossPad){
+    Mondo.npc.push({
+      tipo:'boss', indice:-1, tx:bossPad.tx, ty:bossPad.ty, dir:'giu',
+      veste:'prof', nome:unita.boss.nome || 'Esaminatore'
+    });
+  }
+  if (guidaPos){
+    Mondo.npc.push({
+      tipo:'guida', indice:-1, tx:guidaPos.tx, ty:guidaPos.ty, dir:'dx',
+      veste:'bios', nome:'Bìos'
+    });
+  }
+
+  Mondo.firma = hash32([unita.id, unita.tema, unita.seed, missioni.length, L, A].join('|'));
+
+  // Per ogni casella di sentiero si segna in anticipo quali lati
+  // confinano col prato: durante il gioco basta leggere un numero.
+  Mondo.bordi = new Uint8Array(L*A);
+  var lati = [[0,-1,1],[0,1,2],[-1,0,4],[1,0,8]];
+  for (y=0;y<A;y++) for (x=0;x<L;x++){
+    var ch2 = righe[y].charAt(x);
+    if (!E_SENTIERO[ch2] && ch2 !== 'X') continue;
+    var m = 0;
+    for (var l=0;l<4;l++){
+      var nx = x + lati[l][0], ny = y + lati[l][1];
+      var vic = (nx<0||ny<0||nx>=L||ny>=A) ? '#' : righe[ny].charAt(nx);
+      if (!E_SENTIERO[vic] && vic !== 'X') m |= lati[l][2];
+    }
+    Mondo.bordi[y*L+x] = m;
+  }
+
+  return Mondo;
+}
+
+// Restituisce la casella di terreno da disegnare in quel punto.
+function casellaIn(x,y){
+  var cas = Mondo.caselle;
+  var ch = Mondo.griglia[y].charAt(x);
+  if (ch === 'X' && !Mondo.solido[y*Mondo.larg+x]) ch = '-';
+  var nome = CASELLA_DI[ch] || 'erba';
+  if (nome === 'erba'){
+    var v = (x*7 + y*13) % 7;
+    return v === 0 ? cas.erba2 : (v === 3 ? cas.erba3 : cas.erba1);
+  }
+  if (nome === 'acqua') return cas.acqua[Math.floor(Gioco.tempo/26) % 2];
+  return cas[nome];
+}
+
+function apriCancelli(fattiCount){
+  var cambiato = false;
+  for (var i=0;i<Mondo.cancelli.length;i++){
+    var c = Mondo.cancelli[i];
+    if (c.missione < fattiCount && Mondo.solido[c.ty*Mondo.larg + c.tx]){
+      Mondo.solido[c.ty*Mondo.larg + c.tx] = 0;
+      cambiato = true;
+    }
+  }
+  return cambiato;
+}
+
+function solidoIn(tx,ty){
+  if (tx<0 || ty<0 || tx>=Mondo.larg || ty>=Mondo.alt) return true;
+  if (Mondo.solido[ty*Mondo.larg+tx]) return true;
+  for (var i=0;i<Mondo.npc.length;i++){
+    var n = Mondo.npc[i];
+    if (n.tx===tx && n.ty===ty) return true;
+  }
+  return false;
+}
+
+function caselleIn(tx,ty){
+  if (tx<0 || ty<0 || tx>=Mondo.larg || ty>=Mondo.alt) return '#';
+  return Mondo.griglia[ty].charAt(tx);
+}
+
+// Se la casella di partenza è murata (per esempio perché la piantina
+// è cambiata dopo un salvataggio) si cerca a spirale la più vicina libera.
+function cellaLibera(tx,ty){
+  if (!solidoIn(tx,ty)) return {tx:tx, ty:ty};
+  for (var r=1;r<=12;r++){
+    for (var dy=-r;dy<=r;dy++) for (var dx=-r;dx<=r;dx++){
+      if (Math.abs(dx)!==r && Math.abs(dy)!==r) continue;
+      if (!solidoIn(tx+dx,ty+dy)) return {tx:tx+dx, ty:ty+dy};
+    }
+  }
+  return {tx:Mondo.spawn.tx, ty:Mondo.spawn.ty};
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   6. SALVATAGGIO
+   ══════════════════════════════════════════════════════════════════
+   Dentro un artifact o in un iframe lo spazio di memoria del browser
+   può essere negato: in quel caso il solo accesso a localStorage
+   lancia un errore. Qui si sonda una volta e, se non c'è, si tiene
+   tutto in memoria per la sessione — il gioco funziona lo stesso,
+   e il "codice di ripresa" permette comunque di portarsi il progresso. */
+
+var CHIAVE = 'bioquest.v1';
+
+var Save = (function(){
+  var disponibile = false, memoria = {};
+  try {
+    var ls = window.localStorage;
+    ls.setItem(CHIAVE + '.test', '1');
+    ls.removeItem(CHIAVE + '.test');
+    disponibile = true;
+  } catch(e){ disponibile = false; }
+
+  function leggiGrezzo(){
+    if (!disponibile) return memoria[CHIAVE] || null;
+    try { return window.localStorage.getItem(CHIAVE); } catch(e){ return null; }
+  }
+  function scriviGrezzo(s){
+    if (!disponibile){ memoria[CHIAVE] = s; return; }
+    try { window.localStorage.setItem(CHIAVE, s); } catch(e){ memoria[CHIAVE] = s; }
+  }
+
+  function vuoto(){
+    return {
+      v: 1,
+      missioni: {},        // id missione -> true
+      carte: {},           // id carta -> true
+      medaglie: {},        // id unità -> true
+      sbagliate: {},       // id domanda -> quante volte
+      viste: {},           // id domanda -> true
+      pos: null,           // { unita, tx, ty, firma }
+      unita: 'u7'
+    };
+  }
+
+  function sanifica(d){
+    var s = vuoto();
+    if (!d || typeof d !== 'object') return s;
+    ['missioni','carte','medaglie','sbagliate','viste'].forEach(function(k){
+      if (d[k] && typeof d[k] === 'object') s[k] = d[k];
+    });
+    if (typeof d.unita === 'string') s.unita = d.unita;
+    if (d.pos && typeof d.pos === 'object' &&
+        typeof d.pos.tx === 'number' && typeof d.pos.ty === 'number') s.pos = d.pos;
+    return s;
+  }
+
+  function carica(){
+    var raw = leggiGrezzo();
+    if (!raw) return vuoto();
+    try { return sanifica(JSON.parse(raw)); }
+    catch(e){ return vuoto(); }
+  }
+
+  function salva(d){
+    try { scriviGrezzo(JSON.stringify(d)); } catch(e){}
+  }
+
+  function esporta(d){
+    try { return btoa(unescape(encodeURIComponent(JSON.stringify(d)))); }
+    catch(e){ return ''; }
+  }
+  function importa(codice){
+    try { return sanifica(JSON.parse(decodeURIComponent(escape(atob(codice.trim())))));
+    } catch(e){ return null; }
+  }
+
+  return { carica:carica, salva:salva, vuoto:vuoto, esporta:esporta,
+           importa:importa, disponibile:disponibile };
+})();
+
+/* ══════════════════════════════════════════════════════════════════
+   7. COMANDI — tastiera, croce direzionale, tocco diretto
+   ══════════════════════════════════════════════════════════════════ */
+
+var Input = (function(){
+  var giu = {}, buffer = {}, tapId = null;
+  var AREE = [], nAree = 0;
+  for (var i=0;i<10;i++) AREE.push({x:0,y:0,w:0,h:0,id:null});
+
+  var TASTI = {
+    ArrowUp:'su', ArrowDown:'giu', ArrowLeft:'sx', ArrowRight:'dx',
+    w:'su', s:'giu', a:'sx', d:'dx',
+    W:'su', S:'giu', A:'sx', D:'dx',
+    Enter:'a', ' ':'a', z:'a', Z:'a',
+    Escape:'b', Backspace:'b', x:'b', X:'b',
+    i:'album', I:'album', m:'mappa', M:'mappa',
+    '1':'op1', '2':'op2', '3':'op3', '4':'op4'
+  };
+  // Tab NON è mai intercettato: serve alla navigazione da tastiera.
+
+  function premi(nome){ if (!giu[nome]) buffer[nome] = true; giu[nome] = true; }
+  function rilascia(nome){ giu[nome] = false; }
+
+  window.addEventListener('keydown', function(e){
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    var nome = TASTI[e.key];
+    if (!nome) return;
+    e.preventDefault();
+    premi(nome);
+  }, {passive:false});
+
+  window.addEventListener('keyup', function(e){
+    var nome = TASTI[e.key];
+    if (nome) rilascia(nome);
+  });
+
+  window.addEventListener('blur', function(){ giu = {}; });
+
+  // Croce direzionale e tasti A/B
+  function collega(el){
+    var nome = el.getAttribute('data-t');
+    function attiva(e){ e.preventDefault(); premi(nome); el.setAttribute('data-giu','1'); }
+    function spegni(){ rilascia(nome); el.removeAttribute('data-giu'); }
+    el.addEventListener('pointerdown', attiva);
+    el.addEventListener('pointerup', spegni);
+    el.addEventListener('pointercancel', spegni);
+    el.addEventListener('pointerleave', spegni);
+    el.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('#touch button'), collega);
+
+  // Tocco diretto sul canvas: si converte in coordinate interne
+  // e si confronta con le aree sensibili dichiarate dalla scena.
+  function daSchermo(e){
+    var cvs = elem('schermo'), r = cvs.getBoundingClientRect();
+    return {
+      x: (e.clientX - r.left) * (LARG / r.width),
+      y: (e.clientY - r.top)  * (ALT  / r.height)
+    };
+  }
+  elem('schermo').addEventListener('pointerdown', function(e){
+    e.preventDefault();
+    var p = daSchermo(e);
+    for (var i=0;i<nAree;i++){
+      var a = AREE[i];
+      if (p.x>=a.x && p.x<=a.x+a.w && p.y>=a.y && p.y<=a.y+a.h){ tapId = a.id; return; }
+    }
+    buffer.a = true;   // toccare altrove = "avanti", come premere A
+  }, {passive:false});
+
+  return {
+    tenuto: function(n){ return !!giu[n]; },
+    premuto: function(n){ if (buffer[n]){ buffer[n] = false; return true; } return false; },
+    // Se il tasto è tenuto premuto vince quello; se invece è stato premuto
+    // e rilasciato dentro lo stesso fotogramma (un tocco veloce, o una
+    // tastiera automatica) il passo non va perso: resta nel buffer.
+    direzione: function(){
+      var d = null;
+      if (giu.su) d = 'su';
+      else if (giu.giu) d = 'giu';
+      else if (giu.sx) d = 'sx';
+      else if (giu.dx) d = 'dx';
+      if (d){
+        buffer.su = buffer.giu = buffer.sx = buffer.dx = false;
+        return d;
+      }
+      var ordine = ['su','giu','sx','dx'];
+      for (var i=0;i<4;i++){
+        if (buffer[ordine[i]]){ buffer[ordine[i]] = false; return ordine[i]; }
+      }
+      return null;
+    },
+    azzeraAree: function(){ nAree = 0; },
+    area: function(id,x,y,w,h){
+      if (nAree >= AREE.length) return;
+      var a = AREE[nAree++];
+      a.id=id; a.x=x; a.y=y; a.w=w; a.h=h;
+    },
+    aree: function(){ return AREE.slice(0, nAree); },
+    tap: function(){ var t = tapId; tapId = null; return t; },
+    pulisci: function(){ buffer = {}; tapId = null; }
+  };
+})();
+
+/* ══════════════════════════════════════════════════════════════════
+   8. ELEMENTI DI INTERFACCIA
+   ══════════════════════════════════════════════════════════════════
+   Pannelli chiari con angoli tondi, un filo di ombra sotto e una
+   sfumatura leggera: la cornice delle console a due schermi. */
+
+var UI = {};
+
+UI.box = function(g,x,y,w,h,sfondo,bordoCol){
+  g.save();
+  g.shadowColor = 'rgba(25,32,42,.35)';
+  g.shadowBlur = 2.6; g.shadowOffsetY = 1.2;
+  arrotondato(g,x,y,w,h,4.2);
+  g.fillStyle = bordoCol || UIC.bordo;
+  g.fill();
+  g.restore();
+
+  arrotondato(g,x+1.3,y+1.3,w-2.6,h-2.6,3.4);
+  var gr = g.createLinearGradient(0,y,0,y+h);
+  gr.addColorStop(0, sfondo || UIC.fondo);
+  gr.addColorStop(1, sfondo || UIC.fondo2);
+  g.fillStyle = gr; g.fill();
+
+  // velo di luce solo sulla parte alta: dà il rilievo senza schiarire
+  // i pannelli scuri, che altrimenti diventano metallici.
+  g.save();
+  arrotondato(g,x+1.3,y+1.3,w-2.6,h-2.6,3.4); g.clip();
+  var gl = g.createLinearGradient(0,y,0,y+h*0.55);
+  gl.addColorStop(0,'rgba(255,255,255,.42)');
+  gl.addColorStop(1,'rgba(255,255,255,0)');
+  g.fillStyle = gl; g.fillRect(x, y, w, h*0.55);
+  g.restore();
+};
+
+UI.barra = function(g,x,y,w,h,frazione,colore,fondo){
+  arrotondato(g,x-0.8,y-0.8,w+1.6,h+1.6,(h+1.6)/2);
+  g.fillStyle = 'rgba(35,42,52,.85)'; g.fill();
+  arrotondato(g,x,y,w,h,h/2);
+  g.fillStyle = fondo || UIC.hpFondo; g.fill();
+  var p = Math.max(0, Math.min(1, frazione));
+  if (p > 0.02){
+    arrotondato(g,x,y,Math.max(h,w*p),h,h/2);
+    var gr = g.createLinearGradient(0,y,0,y+h);
+    gr.addColorStop(0,'rgba(255,255,255,.55)');
+    gr.addColorStop(0.45, colore);
+    gr.addColorStop(1, colore);
+    g.fillStyle = gr; g.fill();
+  }
+};
+
+UI.barraPS = function(g,x,y,w,frazione){
+  var col = frazione > 0.5 ? UIC.hpVerde : (frazione > 0.25 ? UIC.hpGiallo : UIC.hpRosso);
+  UI.barra(g, x, y, w, 4.4, frazione, col, UIC.hpFondo);
+};
+
+UI.cuori = function(g,x,y,vite,max){
+  for (var i=0;i<max;i++){
+    var cx = x + i*8.5, pieno = i < vite;
+    g.save();
+    g.fillStyle = pieno ? '#e05a5a' : 'rgba(120,128,140,.45)';
+    g.beginPath();
+    g.moveTo(cx+3, y+6.4);
+    g.bezierCurveTo(cx-0.6, y+3.4, cx+0.4, y+0.4, cx+3, y+2.1);
+    g.bezierCurveTo(cx+5.6, y+0.4, cx+6.6, y+3.4, cx+3, y+6.4);
+    g.closePath(); g.fill();
+    if (pieno){ g.fillStyle='rgba(255,255,255,.5)'; ovale(g,cx+1.9,y+2.4,0.8,0.6); g.fill(); }
+    g.restore();
+  }
+};
+
+UI.cursore = function(g,x,y,tempo){
+  var d = Math.sin(tempo/6)*0.7;
+  g.save();
+  g.fillStyle = '#d89a1e';
+  g.beginPath();
+  g.moveTo(x+2+d, y); g.lineTo(x+6.4+d, y+3.4); g.lineTo(x+2+d, y+6.8);
+  g.closePath(); g.fill();
+  g.restore();
+};
+
+UI.avanti = function(g,x,y,tempo){
+  var d = (Math.floor(tempo/22) % 2) ? 0.8 : 0;
+  g.save();
+  g.fillStyle = '#7d8ea6';
+  g.beginPath();
+  g.moveTo(x, y+d); g.lineTo(x+6, y+d); g.lineTo(x+3, y+4.2+d);
+  g.closePath(); g.fill();
+  g.restore();
+};
+
+UI.lucchetto = function(g,x,y,colore){
+  colore = colore || '#8b93a0';
+  g.save();
+  g.strokeStyle = colore; g.lineWidth = 1.2;
+  g.beginPath(); g.arc(x+4, y+3.4, 2.2, 3.14, 6.28); g.stroke();
+  g.fillStyle = colore;
+  arrotondato(g, x+0.8, y+3.6, 6.4, 5.4, 1.2); g.fill();
+  g.fillStyle = 'rgba(0,0,0,.35)'; ovale(g, x+4, y+6.1, 0.75, 0.9); g.fill();
+  g.restore();
+};
+
+UI.medaglia = function(g,cx,cy,r,acceso){
+  g.save();
+  if (acceso){
+    var al = g.createRadialGradient(cx,cy,r*0.3,cx,cy,r*1.9);
+    al.addColorStop(0,'rgba(255,214,110,.55)'); al.addColorStop(1,'rgba(255,214,110,0)');
+    g.fillStyle = al; ovale(g,cx,cy,r*1.9,r*1.9); g.fill();
+  }
+  var gr = g.createLinearGradient(cx-r,cy-r,cx+r,cy+r);
+  if (acceso){ gr.addColorStop(0,'#ffe9a4'); gr.addColorStop(0.5,'#e8b93c'); gr.addColorStop(1,'#a97d18'); }
+  else { gr.addColorStop(0,'#5a616e'); gr.addColorStop(1,'#3a404b'); }
+  ovale(g,cx,cy,r,r); g.fillStyle = gr; g.fill();
+  bordo(g, acceso ? '#8a6412' : '#2c313a', 1);
+  if (acceso){
+    g.fillStyle = 'rgba(255,255,255,.5)'; ovale(g,cx-r*0.3,cy-r*0.38,r*0.42,r*0.28); g.fill();
+    g.fillStyle = '#8a6412';
+    g.beginPath();
+    for (var i=0;i<5;i++){
+      var a1 = -1.5708 + i*1.2566, a2 = a1 + 0.6283;
+      g.lineTo(cx+Math.cos(a1)*r*0.55, cy+Math.sin(a1)*r*0.55);
+      g.lineTo(cx+Math.cos(a2)*r*0.24, cy+Math.sin(a2)*r*0.24);
+    }
+    g.closePath(); g.fill();
+  } else {
+    // Medaglia non ancora vinta: sagoma spenta, non un lucchetto — il
+    // lucchetto vuol dire "zona chiusa", ed è un'altra cosa.
+    g.fillStyle = 'rgba(255,255,255,.16)';
+    g.beginPath();
+    for (var j=0;j<5;j++){
+      var b1 = -1.5708 + j*1.2566, b2 = b1 + 0.6283;
+      g.lineTo(cx+Math.cos(b1)*r*0.55, cy+Math.sin(b1)*r*0.55);
+      g.lineTo(cx+Math.cos(b2)*r*0.24, cy+Math.sin(b2)*r*0.24);
+    }
+    g.closePath(); g.fill();
+  }
+  g.restore();
+};
+
+// Pedana su cui stanno i due sfidanti in battaglia.
+function piattaforma(g,cx,cy,rx,ry,colore,colore2){
+  g.save();
+  g.globalAlpha = 0.22; g.fillStyle = '#243318';
+  ovale(g,cx,cy+1.6,rx+1.5,ry+1); g.fill();
+  g.globalAlpha = 1;
+  var gr = g.createLinearGradient(0,cy-ry,0,cy+ry);
+  gr.addColorStop(0, colore);
+  gr.addColorStop(1, colore2 || colore);
+  g.fillStyle = gr; ovale(g,cx,cy,rx,ry); g.fill();
+  g.fillStyle = 'rgba(255,255,255,.22)';
+  ovale(g,cx,cy-ry*0.32,rx*0.72,ry*0.5); g.fill();
+  g.restore();
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   9. STATO DEL GIOCO E PILA DELLE SCENE
+   ══════════════════════════════════════════════════════════════════ */
+
+var cvs = elem('schermo');
+var g = cvs.getContext('2d');
+g.imageSmoothingEnabled = false;
+
+var Gioco = {
+  dati:null, unita:null, save:null,
+  player:{ tx:12, ty:29, dir:'giu', frame:0, passo:0, dirPasso:null, animo:0 },
+  tempo:0, passiDaIncontro:0
+};
+
+Gioco.unitaPer = function(id){
+  for (var i=0;i<Gioco.dati.unita.length;i++)
+    if (Gioco.dati.unita[i].id === id) return Gioco.dati.unita[i];
+  return null;
+};
+Gioco.giocabili = function(){
+  return Gioco.dati.unita.filter(function(u){ return u.stato === 'giocabile'; });
+};
+Gioco.carteUnita = function(u){
+  var out = [];
+  (u.missioni||[]).forEach(function(m){
+    (m.domande||[]).forEach(function(d){ if (d.carta) out.push(d.carta); });
+    if (m.cartaBonus) out.push(m.cartaBonus);
+  });
+  if (u.boss) (u.boss.domande||[]).forEach(function(d){ if (d.carta) out.push(d.carta); });
+  return out;
+};
+Gioco.carteTotali = function(){
+  var n = 0;
+  Gioco.giocabili().forEach(function(u){ n += Gioco.carteUnita(u).length; });
+  return n;
+};
+Gioco.carteAvute = function(){
+  var n = 0, s = Gioco.save.carte;
+  Gioco.giocabili().forEach(function(u){
+    Gioco.carteUnita(u).forEach(function(c){ if (s[c.id]) n++; });
+  });
+  return n;
+};
+Gioco.percentuale = function(){
+  var t = Gioco.carteTotali();
+  return t ? Gioco.carteAvute() / t : 0;
+};
+Gioco.missioniFatte = function(u){
+  var n = 0;
+  (u.missioni||[]).forEach(function(m){ if (Gioco.save.missioni[m.id]) n++; });
+  return n;
+};
+Gioco.tutteFatte = function(u){
+  return (u.missioni||[]).length > 0 && Gioco.missioniFatte(u) === u.missioni.length;
+};
+Gioco.salva = function(){
+  Gioco.save.pos = {
+    unita: Gioco.unita.id, tx: Gioco.player.tx, ty: Gioco.player.ty,
+    firma: Mondo.firma
+  };
+  Save.salva(Gioco.save);
+};
+
+var Scene = {
+  pila: [],
+  push: function(s, arg){
+    Scene.pila.push(s);
+    Input.pulisci();
+    if (s.entra) s.entra(arg);
+  },
+  pop: function(ris){
+    var s = Scene.pila.pop();
+    if (s && s.esce) s.esce();
+    Input.pulisci();
+    var sotto = Scene.cima();
+    if (sotto && sotto.torna) sotto.torna(ris);
+  },
+  sostituisci: function(s, arg){
+    var v = Scene.pila.pop();
+    if (v && v.esce) v.esce();
+    Scene.push(s, arg);
+  },
+  cima: function(){ return Scene.pila[Scene.pila.length-1]; }
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   10. AVVIO E CONTROLLO DEI CONTENUTI
+   ══════════════════════════════════════════════════════════════════
+   Il blocco dei contenuti è JSON inerte: un errore lì dentro non può
+   rompere la pagina, e possiamo dire a schermo quale riga correggere. */
+
+function mostraErrore(titolo, corpo){
+  var box = elem('errore'), c = elem('errore-corpo');
+  elem('errore').querySelector('h1').textContent = titolo;
+  c.innerHTML = corpo;
+  box.style.display = 'block';
+}
+
+function scappa(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function rigaDaPosizione(testo, pos){
+  var n = 1;
+  for (var i=0;i<pos && i<testo.length;i++) if (testo.charAt(i) === '\n') n++;
+  return n;
+}
+
+function leggiContenuti(){
+  var nodo = elem('dati');
+  if (!nodo) throw { amichevole:'Manca il blocco dei contenuti nel file.' };
+  var testo = nodo.textContent;
+  try {
+    return JSON.parse(testo);
+  } catch(e){
+    // Invece di un numero di riga da interpretare, si mostrano le righe vere
+    // attorno al punto in cui il browser si è fermato: si cercano nel file
+    // con un normale "trova" e si vede subito cosa manca.
+    var m = /position (\d+)/.exec(e.message);
+    var righe = testo.split('\n');
+    var n = m ? rigaDaPosizione(testo, +m[1]) : 0;
+    var contesto = '';
+    if (n){
+      for (var i = Math.max(1, n-2); i <= Math.min(righe.length, n+1); i++){
+        contesto += (i === n ? '➜ ' : '  ') + righe[i-1] + '\n';
+      }
+    }
+    throw { amichevole:
+      '<p>C\'è un errore di scrittura nel blocco dei contenuti, in cima al file. ' +
+      'Il browser si è fermato qui:</p>' +
+      (contesto ? '<pre>' + scappa(contesto) + '</pre>' : '') +
+      '<p><b>Quasi sempre il problema è sulla riga appena sopra la freccia</b>: ' +
+      'una <b>virgola mancante</b> alla fine, oppure una <b>virgola di troppo</b> ' +
+      'prima di una parentesi chiusa. Altre cause frequenti: una virgoletta " ' +
+      'dimenticata, o delle <b>virgolette curve</b> “ ” incollate da Word.</p>' +
+      '<p>Cerca quelle righe nel file con "Trova", correggi e ricarica la pagina.</p>' +
+      '<pre>' + scappa(e.message) + '</pre>' };
+  }
+}
+
+var LIM_DOMANDA = 110, LIM_OPZIONE = 68;
+
+function controlla(dati){
+  var errori = [];
+  function E(dove, cosa){ errori.push('<b>' + scappa(dove) + '</b> — ' + cosa); }
+
+  if (!dati || typeof dati !== 'object') { E('contenuti','il blocco non contiene un oggetto.'); return errori; }
+  if (!Array.isArray(dati.unita) || !dati.unita.length){
+    E('unita','manca la lista delle unità, oppure è vuota.'); return errori;
+  }
+
+  var idVisti = {};
+  dati.unita.forEach(function(u, iu){
+    var dove = 'unità ' + (u.numero || (iu+1)) + ' (' + (u.id || 'senza id') + ')';
+    if (!u.id) E(dove, 'manca il campo "id".');
+    else if (idVisti[u.id]) E(dove, 'l\'id "' + scappa(u.id) + '" è usato due volte.');
+    else idVisti[u.id] = true;
+    if (!u.titolo) E(dove, 'manca il "titolo".');
+    if (u.stato !== 'giocabile' && u.stato !== 'inArrivo')
+      E(dove, 'il campo "stato" deve essere "giocabile" oppure "inArrivo".');
+    if (u.stato !== 'giocabile') return;
+
+    if (!Array.isArray(u.missioni) || !u.missioni.length)
+      E(dove, 'è "giocabile" ma non ha nessuna missione.');
+
+    function controllaDomanda(d, dove2){
+      if (!d.testo) { E(dove2, 'manca il "testo" della domanda.'); return; }
+      if (d.testo.length > LIM_DOMANDA)
+        E(dove2, 'la domanda è lunga ' + d.testo.length + ' caratteri, il massimo è ' +
+          LIM_DOMANDA + '. Accorciala.');
+      if (!Array.isArray(d.opzioni) || d.opzioni.length !== 4)
+        E(dove2, 'servono esattamente 4 opzioni di risposta.');
+      else d.opzioni.forEach(function(o, i){
+        if (typeof o !== 'string' || !o) E(dove2, 'l\'opzione ' + (i+1) + ' è vuota.');
+        else if (o.length > LIM_OPZIONE)
+          E(dove2, 'l\'opzione ' + (i+1) + ' è lunga ' + o.length +
+            ' caratteri, il massimo è ' + LIM_OPZIONE + ': «' + scappa(o) + '»');
+      });
+      if (!(d.risposta >= 1 && d.risposta <= 4))
+        E(dove2, '"risposta" deve essere 1, 2, 3 o 4 (adesso vale ' + scappa(d.risposta) + ').');
+      if (!d.spiegazione) E(dove2, 'manca la "spiegazione": è il pezzo che fa imparare.');
+      if (d.perche_no && (!Array.isArray(d.perche_no) || d.perche_no.length !== 4))
+        E(dove2, '"perche_no" deve avere esattamente 4 voci, una per opzione.');
+      if (!d.carta || !d.carta.id || !d.carta.titolo)
+        E(dove2, 'manca la "carta" (servono almeno "id" e "titolo").');
+    }
+
+    (u.missioni||[]).forEach(function(m, im){
+      var dm = dove + ' · missione ' + (im+1) + ' (' + (m.titolo || 'senza titolo') + ')';
+      if (!m.id) E(dm, 'manca il campo "id".');
+      if (!Array.isArray(m.domande) || !m.domande.length) E(dm, 'non ha domande.');
+      (m.domande||[]).forEach(function(d, id){ controllaDomanda(d, dm + ' · domanda ' + (id+1)); });
+    });
+
+    if (!u.boss) E(dove, 'manca il boss di fine unità.');
+    else {
+      if (!Array.isArray(u.boss.domande) || !u.boss.domande.length)
+        E(dove + ' · boss', 'non ha domande.');
+      (u.boss.domande||[]).forEach(function(d, id){
+        controllaDomanda(d, dove + ' · boss · domanda ' + (id+1));
+      });
+    }
+    if (!u.medaglia || !u.medaglia.id) E(dove, 'manca la "medaglia".');
+  });
+
+  return errori;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   11. SCALA DELLO SCHERMO
+   ══════════════════════════════════════════════════════════════════
+   Si disegna sempre in unità di gioco (320x208), ma la tela ha la
+   risoluzione vera dello schermo: il browser smussa tutto e non si
+   vedono più i quadretti. */
+
+function ridimensiona(){
+  var vp = elem('viewport');
+  var wCss = vp.clientWidth, hCss = vp.clientHeight;
+  if (!wCss || !hCss) return;
+  var dpr = Math.min(window.devicePixelRatio || 1, 3);
+
+  var s = Math.min(wCss / LARG, hCss / ALT);
+  var cw = Math.max(1, Math.round(LARG * s));
+  var ch = Math.max(1, Math.round(ALT * s));
+  cvs.style.width = cw + 'px';
+  cvs.style.height = ch + 'px';
+
+  var pw = Math.round(cw * dpr), ph = Math.round(ch * dpr);
+  if (cvs.width !== pw || cvs.height !== ph){ cvs.width = pw; cvs.height = ph; }
+
+  // Assegnare width azzera lo stato del contesto: si rimette ogni volta.
+  g.setTransform(pw / LARG, 0, 0, ph / ALT, 0, 0);
+  g.imageSmoothingEnabled = true;
+  g.imageSmoothingQuality = 'high';
+  g.lineJoin = 'round';
+  g.lineCap = 'round';
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   12. SCENA: TITOLO
+   ══════════════════════════════════════════════════════════════════ */
+
+var scenaTitolo = {
+  entra: function(){ this.t = 0; },
+  agg: function(){ this.t++; },
+  input: function(){
+    if (Input.premuto('a') || Input.tap() === 'gioca'){
+      // La prima volta parla Bìos; dopo si riprende da dove si era.
+      var primaVolta = !Gioco.save.pos && Gioco.carteAvute() === 0;
+      Scene.sostituisci(primaVolta ? scenaIntro : scenaOverworld);
+    }
+  },
+  dis: function(gg){
+    var t = this.t;
+    // cielo a bande
+    for (var i=0;i<ALT;i++){
+      var f = i/ALT;
+      gg.fillStyle = f < .55 ? '#14283a' : '#1b3a3a';
+      gg.fillRect(0,i,LARG,1);
+    }
+    for (var s=0;s<40;s++){
+      var x = (s*97 % LARG), y = ((s*57) % 90);
+      gg.fillStyle = (s + Math.floor(t/30)) % 5 === 0 ? '#5fb3ad' : '#2b4a5a';
+      gg.fillRect(x,y,1,1);
+    }
+    // collina
+    gg.fillStyle = '#1d4a2e'; gg.fillRect(0,140,LARG,ALT-140);
+    gg.fillStyle = '#2f7d43'; gg.fillRect(0,146,LARG,ALT-146);
+    for (var k=0;k<70;k++) gg.fillRect((k*37)%LARG, 150+((k*23)%50), 1, 1);
+
+    // titolo
+    var tit = 'BIOQUEST';
+    var w = FONT.misura(tit);
+    for (var sc=0; sc<3; sc++){}
+    gg.save();
+    gg.translate((LARG - w*3)/2, 34);
+    gg.scale(3,3);
+    FONT.scrivi(gg, tit, 1, 1, '#0b1018');
+    FONT.scrivi(gg, tit, 0, 0, C.ambra);
+    gg.restore();
+
+    var sot = 'Biologia — semestre aperto';
+    FONT.scrivi(gg, sot, (LARG - FONT.misura(sot))/2, 66, C.tealC);
+
+    var u7 = 'Unità 7 · Il controllo della proliferazione';
+    var u7b = 'e della sopravvivenza cellulare';
+    FONT.scrivi(gg, u7,  (LARG - FONT.misura(u7))/2,  84, C.quasi);
+    FONT.scrivi(gg, u7b, (LARG - FONT.misura(u7b))/2, 94, C.quasi);
+
+    // cellula che pulsa
+    var r = 13 + Math.sin(t/26)*1.6;
+    gg.fillStyle = C.tealS;
+    gg.beginPath(); gg.arc(LARG/2, 126, r+2, 0, 6.2832); gg.fill();
+    gg.fillStyle = C.teal;
+    gg.beginPath(); gg.arc(LARG/2, 126, r, 0, 6.2832); gg.fill();
+    gg.fillStyle = C.tealC;
+    gg.beginPath(); gg.arc(LARG/2 - 2, 124, r/2.4, 0, 6.2832); gg.fill();
+
+    UI.box(gg, 60, 162, 200, 26, C.carta);
+    var msg = Gioco.save && Gioco.save.pos ? 'Premi A per riprendere' : 'Premi A per cominciare';
+    FONT.scrivi(gg, msg, (LARG - FONT.misura(msg))/2, 170, C.ink);
+    if (Math.floor(t/24) % 2 === 0)
+      FONT.scrivi(gg, '▼', LARG/2 - 2, 180, C.ambraS);
+
+    Input.azzeraAree();
+    Input.area('gioca', 60, 162, 200, 26);
+
+    var pie = Save.disponibile ? 'Frecce o WASD per muoverti · A per parlare'
+                               : 'Qui il progresso non si salva: usa il codice di ripresa';
+    gg.fillStyle = 'rgba(15,20,32,.55)'; gg.fillRect(0, ALT-16, LARG, 16);
+    FONT.scrivi(gg, pie, (LARG - FONT.misura(pie))/2, ALT-12, Save.disponibile ? '#9fb0c6' : C.ambraC);
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   12-bis. BÌOS — il personaggio che è la biologia
+   ══════════════════════════════════════════════════════════════════
+   Accoglie il giocatore, dice chi è e a cosa serve: allenarlo a
+   superare il boss vero, che non sta dentro il gioco. */
+
+var INTRO_BIOS = [
+  'Ah. Sei arrivato.',
+  'Mi chiamo Bìos. In greco vuol dire «vita»: è l\'unica parola che mi descriva per intero.',
+  'Non sono un professore. Sono la materia: tutto quello che dentro di te nasce, si divide e a un certo punto decide di finire.',
+  'Fra qualche mese ti aspetta una prova che qui chiamiamo il Semestre Filtro. È il boss finale, e non è in questo giardino: è fuori, nel mondo vero.',
+  'Non ti chiederà di ricordare. Ti chiederà di capire. Sono due cose diverse, e solo una si può allenare in fretta.',
+  'Io non posso passarlo al posto tuo. Posso fare l\'altra cosa: allenarti.',
+  'Questo è il Giardino del Ciclo, la settima unità del programma. Quattro esaminatori lungo il sentiero, e un Professore in fondo.',
+  'Ogni concetto che capisci diventa una carta. Le carte sono le tue abilità: quando l\'album è pieno, quell\'unità non ti fa più paura.',
+  'Una regola sola, ed è la più importante: qui si impara sbagliando. Ogni risposta sbagliata ti spiega perché è sbagliata. Non evitare gli errori. Usali.',
+  'Il primo esaminatore è più avanti, lungo il sentiero. Vai: ti guardo da qui.'
+];
+
+function consiglioBios(){
+  var u = Gioco.unita;
+  var fatte = Gioco.missioniFatte(u), tot = (u.missioni||[]).length;
+  var carte = Gioco.carteAvute(), tutte = Gioco.carteTotali();
+  var r = [];
+  if (Gioco.save.medaglie[u.id]){
+    r.push('Hai la medaglia. Questa unità non ti fa più paura, ed è esattamente quello che serviva.');
+    r.push('Le altre sei zone del programma sono ancora chiuse: arriveranno. Nel frattempo l\'erba alta serve a non dimenticare.');
+  } else if (fatte === 0){
+    r.push('Il primo esaminatore è più avanti, lungo il sentiero. Non ti farà passare il cancello finché non avrete parlato.');
+    r.push('Ricorda la regola: qui si impara sbagliando. Una risposta sbagliata non ti punisce, ti spiega.');
+  } else if (fatte < tot){
+    r.push('Ne hai superate ' + fatte + ' su ' + tot + '. Il prossimo cancello si apre quando superi l\'esaminatore che lo precede.');
+    r.push('Se una domanda ti ha messo in difficoltà, torna nell\'erba alta: lì ripescano proprio quelle che hai sbagliato.');
+  } else {
+    r.push('Quattro su quattro. Il Professore ti aspetta in fondo al giardino.');
+    r.push('Non chiede definizioni: chiede di mettere insieme i pezzi. È il ripasso più utile che farai.');
+  }
+  r.push('Carte conquistate: ' + carte + ' su ' + tutte + '. Programma coperto: ' +
+         Math.round(Gioco.percentuale()*100) + '%.');
+  return r;
+}
+
+var scenaIntro = {
+  entra: function(){
+    this.i = 0; this.t = 0;
+    this.pag = 0; this.car = 0;
+    this.impagina();
+  },
+  impagina: function(){
+    this.pagine = FONT.pagine(INTRO_BIOS[this.i], LARG - 44, 3);
+    this.pag = 0; this.car = 0;
+  },
+  agg: function(){
+    this.t++;
+    var tot = (this.pagine[this.pag]||[]).join('\n').length;
+    if (this.car < tot) this.car += 2;
+  },
+  input: function(){
+    if (!(Input.premuto('a') || Input.tap() === 'avanti')) return;
+    var tot = (this.pagine[this.pag]||[]).join('\n').length;
+    if (this.car < tot){ this.car = tot; return; }
+    if (this.pag < this.pagine.length - 1){ this.pag++; this.car = 0; return; }
+    this.i++;
+    if (this.i >= INTRO_BIOS.length){ Scene.sostituisci(scenaOverworld); return; }
+    this.impagina();
+  },
+  dis: function(gg){
+    var t = this.t;
+    var gr = gg.createLinearGradient(0,0,0,ALT);
+    gr.addColorStop(0,'#0b1f24'); gr.addColorStop(1,'#123437');
+    gg.fillStyle = gr; gg.fillRect(0,0,LARG,ALT);
+
+    // Due filamenti che si avvolgono: la vita che si copia.
+    gg.save();
+    for (var y=0;y<160;y+=2.2){
+      var f = (y + t*0.6) * 0.07;
+      var dd = Math.sin(f) * 48;
+      var vicino = Math.cos(f) > 0;
+      if (y % 13 < 2.2){
+        gg.strokeStyle = 'rgba(228,175,110,.16)'; gg.lineWidth = 1.1;
+        gg.beginPath();
+        gg.moveTo(LARG/2 - dd, y); gg.lineTo(LARG/2 + dd, y); gg.stroke();
+      }
+      var r1 = vicino ? 2.3 : 1.5, r2 = vicino ? 1.5 : 2.3;
+      gg.fillStyle = vicino ? 'rgba(120,225,160,.34)' : 'rgba(60,150,145,.24)';
+      ovale(gg, LARG/2 + dd, y, r1, r1); gg.fill();
+      gg.fillStyle = vicino ? 'rgba(60,150,145,.24)' : 'rgba(120,225,160,.34)';
+      ovale(gg, LARG/2 - dd, y, r2, r2); gg.fill();
+    }
+    gg.restore();
+
+    // Bìos, in grande.
+    var salto = Math.sin(t/34) * 2;
+    var bx = (LARG - 48)/2, by = 46 + salto;
+    gg.save();
+    gg.translate(bx + 24, by + 74); gg.scale(1,0.3);
+    gg.fillStyle = 'rgba(0,0,0,.34)';
+    gg.beginPath(); gg.arc(0,0,22,0,6.2832); gg.fill();
+    gg.restore();
+    gg.drawImage(attore('bios').giu[0], bx, by, 48, 72);
+
+    disegnaFumetto(gg, 'Bìos', this.pagine[this.pag] || [], this.car);
+    Input.azzeraAree();
+    Input.area('avanti', 0, 0, LARG, ALT);
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   13. SCENA: OVERWORLD
+   ══════════════════════════════════════════════════════════════════ */
+
+var camX = 0, camY = 0;
+
+var scenaOverworld = {
+  entra: function(){
+    var p = Gioco.player;
+    apriCancelli(Gioco.missioniFatte(Gioco.unita));
+    var lib = cellaLibera(p.tx, p.ty);
+    p.tx = lib.tx; p.ty = lib.ty; p.passo = 0; p.dirPasso = null;
+    this.inquadra(true);
+    this.avviso = null; this.avvisoT = 0;
+  },
+
+  // Scostamento in pixel del passo in corso: la camera e lo sprite
+  // devono usare lo stesso numero, altrimenti il personaggio "nuota".
+  scostamento: function(){
+    var p = Gioco.player;
+    if (!p.dirPasso) return [0,0];
+    var q = p.passo / PASSO;
+    var d = DIR[p.dirPasso];
+    return [ d[0]*q*TILE, d[1]*q*TILE ];
+  },
+
+  inquadra: function(){
+    var p = Gioco.player, o = this.scostamento();
+    camX = clamp(p.tx*TILE + TILE/2 + o[0] - LARG/2, 0, Math.max(0, Mondo.larg*TILE - LARG));
+    camY = clamp(p.ty*TILE + TILE/2 + o[1] - ALT/2,  0, Math.max(0, Mondo.alt*TILE - ALT));
+  },
+
+  agg: function(){
+    var p = Gioco.player;
+    if (this.avvisoT > 0) this.avvisoT--;
+
+    if (p.dirPasso){
+      p.passo++;
+      if (p.passo >= PASSO){
+        var d = DIR[p.dirPasso];
+        p.tx += d[0]; p.ty += d[1];
+        p.passo = 0; p.dirPasso = null;
+        p.frame = p.frame === 1 ? 2 : 1;
+        Gioco.passiDaIncontro++;
+        this.dopoPasso();
+      }
+    } else {
+      var dir = Input.direzione();
+      if (dir){
+        p.dir = dir;
+        var d2 = DIR[dir];
+        var nx = p.tx + d2[0], ny = p.ty + d2[1];
+        var occupante = this.npcIn(nx, ny);
+        if (occupante){
+          this.sfida(occupante);
+        } else if (!solidoIn(nx, ny)){
+          p.dirPasso = dir; p.passo = 0;
+        } else {
+          this.bloccato(nx, ny);
+          p.frame = 0;
+        }
+      } else {
+        p.frame = 0;
+      }
+    }
+    this.inquadra();
+  },
+
+  dopoPasso: function(){
+    var p = Gioco.player;
+
+    // Come nelle palestre di Pokémon: se ti avvicini a un esaminatore che
+    // non hai ancora superato, ti ferma lui. Senza questo si può girargli
+    // intorno lungo il sentiero e arrivare al cancello senza aver parlato.
+    var vicino = this.esaminatoreVicino();
+    if (vicino){ this.sfida(vicino); return; }
+
+    // Erba dello studio: ripasso a sorpresa, con un minimo di tregua
+    if (caselleIn(p.tx, p.ty) === 'E' && Gioco.passiDaIncontro > 4){
+      if (Math.random() < 0.16){
+        var d = this.domandaDaRipassare();
+        if (d){
+          Gioco.passiDaIncontro = 0;
+          Scene.push(scenaBattaglia, {
+            tipo:'ripasso', titolo:'Ripasso', nome:'Dubbio improvviso',
+            veste:'npc3', domande:[d],
+            intro:['Un dubbio ti prende in mezzo all\'erba alta.'],
+            vittoria:['Chiarito. Vai pure.'],
+            sconfitta:['Rileggi con calma: è così che si impara.']
+          });
+        }
+      }
+    }
+    if (Gioco.tempo % 40 === 0) Gioco.salva();
+  },
+
+  // Cascata di ripiego: prima quelle sbagliate, poi quelle viste,
+  // poi qualunque domanda di una missione già affrontata. Se non c'è
+  // niente (inizio partita) l'erba non innesca nulla.
+  domandaDaRipassare: function(){
+    var u = Gioco.unita, s = Gioco.save;
+    var sbagliate = [], viste = [], tutte = [];
+    (u.missioni||[]).forEach(function(m){
+      if (!s.missioni[m.id] && !(m.domande||[]).some(function(d){ return s.viste[d.id]; })) return;
+      (m.domande||[]).forEach(function(d){
+        tutte.push(d);
+        if (s.sbagliate[d.id]) sbagliate.push(d);
+        else if (s.viste[d.id]) viste.push(d);
+      });
+    });
+    var pool = sbagliate.length ? sbagliate : (viste.length ? viste : tutte);
+    if (!pool.length) return null;
+    return pool[(Math.random()*pool.length)|0];
+  },
+
+  esaminatoreVicino: function(){
+    var p = Gioco.player, u = Gioco.unita;
+    var lati = [[0,-1],[0,1],[-1,0],[1,0]];
+    for (var i=0;i<lati.length;i++){
+      var n = this.npcIn(p.tx + lati[i][0], p.ty + lati[i][1]);
+      if (!n || n.tipo !== 'missione') continue;
+      if (Gioco.save.missioni[u.missioni[n.indice].id]) continue;   // già superata
+      return n;
+    }
+    return null;
+  },
+
+  npcIn: function(tx,ty){
+    for (var i=0;i<Mondo.npc.length;i++){
+      var n = Mondo.npc[i];
+      if (n.tx===tx && n.ty===ty) return n;
+    }
+    return null;
+  },
+
+  bloccato: function(nx,ny){
+    var ch = caselleIn(nx,ny);
+    if (ch === 'X'){
+      var cancello = null;
+      for (var i=0;i<Mondo.cancelli.length;i++)
+        if (Mondo.cancelli[i].tx===nx && Mondo.cancelli[i].ty===ny) cancello = Mondo.cancelli[i];
+      var miss = Gioco.unita.missioni[cancello ? cancello.missione : 0];
+      this.avviso = 'Chiuso. Supera «' + (miss ? miss.titolo : 'la missione') + '» per passare.';
+      this.avvisoT = 150;
+    } else if (ch === 'C'){
+      Scene.push(scenaDialogo, {
+        righe:[ Gioco.unita.cartello || Gioco.unita.titolo ],
+        nome:'Cartello'
+      });
+    } else if (ch === 'B'){
+      this.avviso = 'Una siepe fitta. Di là non si passa.';
+      this.avvisoT = 90;
+    }
+  },
+
+  sfida: function(n){
+    var u = Gioco.unita;
+    if (n.tipo === 'guida'){
+      Scene.push(scenaDialogo, { nome:'Bìos', righe: consiglioBios() });
+      return;
+    }
+    if (n.tipo === 'missione'){
+      var m = u.missioni[n.indice];
+      var fatta = !!Gioco.save.missioni[m.id];
+      Scene.push(scenaBattaglia, {
+        tipo:'missione', idMissione:m.id, titolo:m.titolo, nome:n.nome, veste:n.veste,
+        domande:m.domande, cartaBonus:m.cartaBonus,
+        intro: fatta ? ['Bentornato. Vuoi riprovare? Le carte ce le hai già.'] : (m.intro||[]),
+        vittoria:m.vittoria||[], sconfitta:m.sconfitta||[],
+        ripetizione: fatta
+      });
+    } else {
+      if (!Gioco.tutteFatte(u)){
+        Scene.push(scenaDialogo, {
+          nome:u.boss.nome,
+          righe:['Non così in fretta. Prima supera le quattro missioni del giardino.',
+                 'Ti aspetto qui: non ho fretta, io.']
+        });
+        return;
+      }
+      Scene.push(scenaBattaglia, {
+        tipo:'boss', idMissione:'boss:'+u.id, titolo:'Esame finale',
+        nome:u.boss.nome, veste:'prof',
+        domande:u.boss.domande,
+        intro:u.boss.intro||[], vittoria:u.boss.vittoria||[], sconfitta:u.boss.sconfitta||[],
+        ripetizione: !!Gioco.save.medaglie[u.id]
+      });
+    }
+  },
+
+  input: function(){
+    if (Input.premuto('album')) { Scene.push(scenaAlbum); return; }
+    if (Input.premuto('mappa')) { Scene.push(scenaMappa); return; }
+    var t = Input.tap();
+    if (t === 'album') { Scene.push(scenaAlbum); return; }
+    if (t === 'mappa') { Scene.push(scenaMappa); return; }
+    if (Input.premuto('a')){
+      var p = Gioco.player;
+      var d = DIR[p.dir];
+      var n = this.npcIn(p.tx+d[0], p.ty+d[1]);
+      if (n) this.sfida(n);
+      else this.bloccato(p.tx+d[0], p.ty+d[1]);
+    }
+  },
+
+  torna: function(){
+    apriCancelli(Gioco.missioniFatte(Gioco.unita));
+    Gioco.salva();
+    // Medaglia appena conquistata?
+    var u = Gioco.unita;
+    if (Gioco.save.medaglie[u.id] && !this.medagliaMostrata){
+      this.medagliaMostrata = true;
+      Scene.push(scenaMedaglia, u);
+    }
+  },
+
+  dis: function(gg){
+    var p = Gioco.player;
+    var o = this.scostamento(), offx = o[0], offy = o[1];
+
+    var cx = camX, cy = camY;
+    gg.fillStyle = '#26331f'; gg.fillRect(0,0,LARG,ALT);
+
+    // Terreno: si disegnano soltanto le caselle inquadrate, prendendole
+    // già pronte dal set. L'acqua si anima da sola perché il fotogramma
+    // dipende dal tempo di gioco.
+    var cas = Mondo.caselle;
+    var tx0 = Math.max(0, Math.floor(cx/TILE)), tx1 = Math.min(Mondo.larg-1, Math.floor((cx+LARG)/TILE));
+    var ty0 = Math.max(0, Math.floor(cy/TILE)), ty1 = Math.min(Mondo.alt-1, Math.floor((cy+ALT)/TILE));
+    for (var ty=ty0; ty<=ty1; ty++){
+      for (var tx=tx0; tx<=tx1; tx++){
+        var px = tx*TILE - cx, py = ty*TILE - cy;
+        var ch = Mondo.griglia[ty].charAt(tx);
+        var nome = CASELLA_DI[ch] || 'erba';
+        var dx0 = px - SBAVA, dy0 = py - SBAVA, dd = TILE + SBAVA*2;
+        if (nome === 'roccia' || nome === 'piazzola' || nome === 'fiori'){
+          gg.drawImage(cas.erba1, dx0, dy0, dd, dd);
+        }
+        gg.drawImage(casellaIn(tx,ty), dx0, dy0, dd, dd);
+        var b = Mondo.bordi[ty*Mondo.larg+tx];
+        if (b){
+          if (b & 1) gg.drawImage(cas.bordo.su,  dx0, dy0, dd, dd);
+          if (b & 2) gg.drawImage(cas.bordo.giu, dx0, dy0, dd, dd);
+          if (b & 4) gg.drawImage(cas.bordo.sx,  dx0, dy0, dd, dd);
+          if (b & 8) gg.drawImage(cas.bordo.dx,  dx0, dy0, dd, dd);
+        }
+      }
+    }
+
+    // Personaggi e oggetti alti, ordinati per profondità: chi ha la base
+    // più in basso viene disegnato dopo, così si passa dietro agli alberi.
+    var sporgenza = PERS_A - TILE;
+    var attori = [];
+    Mondo.alti.forEach(function(o){
+      var d = Mondo.disegniAlti[o.tipo];
+      attori.push({ y:o.ty*TILE, x:o.tx*TILE, img:d.img, dx:d.dx, dy:d.dy,
+                    larg:d.w, alt:d.h, oggetto:true });
+    });
+    Mondo.npc.forEach(function(n){
+      attori.push({ y:n.ty*TILE, x:n.tx*TILE, img: attore(n.veste)[n.dir][0], npc:n });
+    });
+    attori.push({
+      y: p.ty*TILE + offy, x: p.tx*TILE + offx,
+      img: attore('eroe')[p.dir][p.dirPasso ? (p.passo < PASSO/2 ? (p.frame||1) : (p.frame===1?2:1)) : 0]
+    });
+    attori.sort(function(a,b){ return a.y - b.y; });
+
+    attori.forEach(function(a){
+      var lg = a.oggetto ? a.larg : PERS_L, al = a.oggetto ? a.alt : PERS_A;
+      var sx = (a.x - cx) + (a.dx || 0);
+      var sy = (a.y - cy) + (a.oggetto ? a.dy : -sporgenza);
+      if (sx < -lg || sy < -al || sx > LARG || sy > ALT) return;
+      gg.drawImage(a.img, sx, sy, lg, al);
+      if (a.npc && a.npc.tipo !== 'guida'){
+        // Fumettino di richiamo finché quella prova non è superata.
+        var fatto = a.npc.tipo === 'missione'
+          ? !!Gioco.save.missioni[Gioco.unita.missioni[a.npc.indice].id]
+          : !!Gioco.save.medaglie[Gioco.unita.id];
+        if (!fatto){
+          // fumetto di richiamo, con la codina verso il personaggio
+          var salto = Math.abs(Math.sin(Gioco.tempo/14)) * 1.5;
+          var bx = sx + TILE/2, by = sy - 8.5 - salto;
+          gg.save();
+          gg.fillStyle = '#fff7dd';
+          gg.strokeStyle = '#a8791a'; gg.lineWidth = 0.7;
+          ovale(gg, bx, by, 4.6, 4.2); gg.fill(); gg.stroke();
+          gg.beginPath();
+          gg.moveTo(bx-1.6, by+3.2); gg.lineTo(bx, by+6.4); gg.lineTo(bx+1.6, by+3.2);
+          gg.closePath(); gg.fill();
+          gg.fillStyle = '#c0392b';
+          arrotondato(gg, bx-0.6, by-2.4, 1.2, 3.1, 0.6); gg.fill();
+          ovale(gg, bx, by+2.1, 0.65, 0.65); gg.fill();
+          gg.restore();
+        }
+      }
+    });
+
+    // Erba dello studio in primo piano: il personaggio ci sparisce dentro
+    // fino alla vita. Si ridisegna solo la parte inquadrata.
+    for (var ey=ty0; ey<=ty1; ey++) for (var ex=tx0; ex<=tx1; ex++){
+      if (Mondo.griglia[ey].charAt(ex) !== 'E') continue;
+      gg.drawImage(cas.erbaAlta, 0, cas.erbaAlta.height*0.42,
+                   cas.erbaAlta.width, cas.erbaAlta.height*0.58,
+                   ex*TILE - cx, ey*TILE - cy + TILE*0.42, TILE, TILE*0.58);
+    }
+
+    scenaOverworld.hud(gg);
+
+    if (this.avvisoT > 0 && this.avviso){
+      var righe = FONT.spezza(this.avviso, LARG-40);
+      var h = righe.length*9 + 14;
+      UI.box(gg, 12, ALT-h-10, LARG-24, h, C.carta);
+      righe.forEach(function(r,i){
+        FONT.scrivi(gg, r, 22, ALT-h-10+7+i*9, C.ink);
+      });
+    }
+  },
+
+  hud: function(gg){
+    var u = Gioco.unita;
+    // Targhetta della zona, in alto a sinistra, come l'insegna che
+    // compare entrando in una città.
+    var titolo = 'U' + u.numero + ' · ' + u.zona;
+    var fatte = Gioco.missioniFatte(u), tot = (u.missioni||[]).length;
+    var s = fatte + '/' + tot + ' missioni';
+    var wT = Math.max(FONT.misura(titolo), FONT.misura(s) + 34) + 16;
+    UI.box(gg, 4, 3, wT, 30);
+    FONT.scrivi(gg, titolo, 11, 7, UIC.testo);
+    FONT.scrivi(gg, s, 11, 20, UIC.testoTenue);
+    UI.barra(gg, 11 + FONT.misura(s) + 6, 21, wT - FONT.misura(s) - 30, 3,
+             Gioco.percentuale(), '#5aa8e0', '#5a6068');
+
+    // tasti album/mappa in basso a destra
+    var wA = FONT.misura('ALBUM') + 12, wM = FONT.misura('MAPPA') + 12;
+    var xM = LARG - wM - 4, xA = xM - wA - 4, yB = ALT - 20;
+    UI.box(gg, xA, yB, wA, 17);
+    FONT.scrivi(gg, 'ALBUM', xA + 6, yB + 5, UIC.testo);
+    UI.box(gg, xM, yB, wM, 17);
+    FONT.scrivi(gg, 'MAPPA', xM + 6, yB + 5, UIC.testo);
+    Input.azzeraAree();
+    Input.area('album', xA, yB, wA, 17);
+    Input.area('mappa', xM, yB, wM, 17);
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   14. SCENA: DIALOGO
+   ══════════════════════════════════════════════════════════════════ */
+
+var scenaDialogo = {
+  entra: function(arg){
+    this.righe = (arg.righe || []).slice();
+    this.nome = arg.nome || '';
+    this.i = 0; this.car = 0; this.pag = 0;
+    this.preparaPagine();
+  },
+  preparaPagine: function(){
+    var t = this.righe[this.i] || '';
+    this.pagine = FONT.pagine(t, LARG - 44, 3);
+    this.pag = 0; this.car = 0;
+  },
+  testoPagina: function(){ return (this.pagine[this.pag] || []).join('\n'); },
+  agg: function(){
+    var tot = this.testoPagina().length;
+    if (this.car < tot) this.car += 2;
+  },
+  input: function(){
+    if (!(Input.premuto('a') || Input.tap() === 'avanti')) return;
+    var tot = this.testoPagina().length;
+    if (this.car < tot){ this.car = tot; return; }
+    if (this.pag < this.pagine.length - 1){ this.pag++; this.car = 0; return; }
+    this.i++;
+    if (this.i >= this.righe.length){ Scene.pop(); return; }
+    this.preparaPagine();
+  },
+  dis: function(gg){
+    var sotto = Scene.pila[Scene.pila.length-2];
+    if (sotto && sotto.dis) sotto.dis(gg);
+    gg.fillStyle = 'rgba(15,20,32,.35)'; gg.fillRect(0,0,LARG,ALT);
+    disegnaFumetto(gg, this.nome, this.pagine[this.pag] || [], this.car);
+    Input.azzeraAree();
+    Input.area('avanti', 0, 0, LARG, ALT);
+  }
+};
+
+// Il riquadro del parlato, sempre nello stesso posto: in basso.
+function disegnaFumetto(gg, nome, righe, caratteri){
+  var h = 56, y = ALT - h - 5;
+  UI.box(gg, 5, y, LARG-10, h);
+  // filo interno colorato: è il dettaglio che distingue la finestra di
+  // dialogo di una console da un semplice rettangolo bianco
+  arrotondato(gg, 8, y+3, LARG-16, h-6, 3);
+  gg.strokeStyle = '#93b4cc'; gg.lineWidth = 0.9; gg.stroke();
+  if (nome){
+    var w = FONT.misura(nome) + 12;
+    UI.box(gg, 12, y-10, w, 14, '#dceaf2');
+    FONT.scrivi(gg, nome, 18, y-6, UIC.testo);
+  }
+  var visti = 0;
+  for (var i=0;i<righe.length;i++){
+    var r = righe[i];
+    var quanti = Math.max(0, Math.min(r.length, (caratteri === undefined ? 1e9 : caratteri) - visti));
+    if (quanti > 0) FONT.scrivi(gg, r.slice(0, quanti), 17, y + 11 + i*11, UIC.testo);
+    visti += r.length;
+  }
+  UI.avanti(gg, LARG-24, y + h - 13, Gioco.tempo);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   15. SCENA: BATTAGLIA DI CONOSCENZA
+   ══════════════════════════════════════════════════════════════════
+   Regola: una risposta sbagliata non chiude la domanda, la rimanda in
+   fondo alla coda. Prima però mostra la spiegazione. Si esce solo
+   quando si sono capite tutte — o quando si finiscono le vite. */
+
+var VITE_MAX = 3;
+var TRANS_MAX = 20;
+
+var scenaBattaglia = {
+  entra: function(arg){
+    this.a = arg;
+    this.trans = TRANS_MAX;
+    this.coda = (arg.domande || []).slice();
+    this.totale = this.coda.length;
+    this.vinte = 0;
+    this.vite = VITE_MAX;                 // le vite si azzerano a ogni sfida
+    this.sel = 0;
+    this.fase = 'intro';
+    this.introI = 0;
+    this.scossa = 0;
+    this.lampo = 0;
+    this.esito = null;
+    this.nuoveCarte = [];
+    this.introRighe = (arg.intro && arg.intro.length) ? arg.intro.slice() : ['Cominciamo.'];
+    this.dlg = { pagine: FONT.pagine(this.introRighe[0], LARG-44, 3), pag:0, car:0 };
+  },
+
+  domanda: function(){ return this.coda[0]; },
+
+  agg: function(){
+    if (this.trans > 0){ this.trans--; return; }
+    if (this.scossa > 0) this.scossa--;
+    if (this.lampo > 0) this.lampo--;
+    if (this.fase === 'intro' || this.fase === 'fine'){
+      var tot = (this.dlg.pagine[this.dlg.pag]||[]).join('\n').length;
+      if (this.dlg.car < tot) this.dlg.car += 2;
+    }
+  },
+
+  avanzaDialogo: function(dopo){
+    var pag = this.dlg.pagine[this.dlg.pag] || [];
+    var tot = pag.join('\n').length;
+    if (this.dlg.car < tot){ this.dlg.car = tot; return false; }
+    if (this.dlg.pag < this.dlg.pagine.length - 1){ this.dlg.pag++; this.dlg.car = 0; return false; }
+    return dopo();
+  },
+
+  input: function(){
+    var self = this;
+    if (this.trans > 0){ Input.pulisci(); return; }
+    var tap = Input.tap();
+
+    if (this.fase === 'intro'){
+      if (Input.premuto('a') || tap === 'avanti'){
+        this.avanzaDialogo(function(){
+          self.introI++;
+          if (self.introI < self.introRighe.length){
+            self.dlg = { pagine: FONT.pagine(self.introRighe[self.introI], LARG-44, 3), pag:0, car:0 };
+          } else {
+            self.fase = 'domanda'; self.sel = 0;
+            var d = self.domanda();
+            if (d) Gioco.save.viste[d.id] = true;
+          }
+          return true;
+        });
+      }
+      return;
+    }
+
+    if (this.fase === 'domanda'){
+      if (Input.premuto('su'))  this.sel = (this.sel + 3) % 4;
+      if (Input.premuto('giu')) this.sel = (this.sel + 1) % 4;
+      if (Input.premuto('sx'))  this.sel = (this.sel + 3) % 4;
+      if (Input.premuto('dx'))  this.sel = (this.sel + 1) % 4;
+      for (var k=1;k<=4;k++) if (Input.premuto('op'+k)){ this.rispondi(k-1); return; }
+      if (typeof tap === 'number'){ this.sel = tap; this.rispondi(tap); return; }
+      if (Input.premuto('a')) this.rispondi(this.sel);
+      return;
+    }
+
+    if (this.fase === 'fine'){
+      if (Input.premuto('a') || tap === 'avanti'){
+        this.avanzaDialogo(function(){ self.chiudi(); return true; });
+      }
+      return;
+    }
+  },
+
+  rispondi: function(i){
+    var d = this.domanda();
+    if (!d) return;
+    var giusta = (i === (d.risposta - 1));
+    Gioco.save.viste[d.id] = true;
+    if (giusta){
+      this.coda.shift();
+      this.vinte++;
+      this.lampo = 18;
+      if (d.carta && !Gioco.save.carte[d.carta.id]){
+        Gioco.save.carte[d.carta.id] = true;
+        this.nuoveCarte.push(d.carta);
+      }
+    } else {
+      this.vite--;
+      this.scossa = 16;
+      Gioco.save.sbagliate[d.id] = (Gioco.save.sbagliate[d.id] || 0) + 1;
+      this.coda.push(this.coda.shift());   // la domanda torna, più avanti
+    }
+    Save.salva(Gioco.save);
+    var self = this;
+    Scene.push(scenaSpiegazione, {
+      domanda:d, scelta:i, giusta:giusta,
+      carta: giusta ? d.carta : null,
+      dopo: function(){ self.dopoSpiegazione(); }
+    });
+  },
+
+  dopoSpiegazione: function(){
+    if (this.vite <= 0){ this.finisci(false); return; }
+    if (!this.coda.length){ this.finisci(true); return; }
+    this.fase = 'domanda'; this.sel = 0;
+  },
+
+  finisci: function(vinto){
+    var a = this.a, u = Gioco.unita;
+    this.vinto = vinto;
+    if (vinto){
+      if (a.tipo === 'missione'){
+        Gioco.save.missioni[a.idMissione] = true;
+        if (a.cartaBonus && !Gioco.save.carte[a.cartaBonus.id]){
+          Gioco.save.carte[a.cartaBonus.id] = true;
+          this.nuoveCarte.push(a.cartaBonus);
+        }
+      } else if (a.tipo === 'boss'){
+        Gioco.save.medaglie[u.id] = true;
+      }
+      Save.salva(Gioco.save);
+    }
+    var righe = (vinto ? (a.vittoria||['Bravo.']) : (a.sconfitta||['Ripassa e torna.'])).slice();
+    if (vinto && this.nuoveCarte.length){
+      righe.push('Hai aggiunto ' + this.nuoveCarte.length +
+        (this.nuoveCarte.length === 1 ? ' carta all\'album.' : ' carte all\'album.'));
+    }
+    this.fase = 'fine';
+    this.dlg = { pagine: FONT.pagine(righe[0], LARG-44, 3), pag:0, car:0 };
+    this.righeFine = righe; this.fineI = 0;
+    this.introRighe = righe; this.introI = 0;
+    // riuso lo stesso avanzamento del dialogo
+    var self = this;
+    this.chiudi = function(){
+      self.fineI++;
+      if (self.fineI < righe.length){
+        self.dlg = { pagine: FONT.pagine(righe[self.fineI], LARG-44, 3), pag:0, car:0 };
+        return;
+      }
+      Scene.pop({ vinto: vinto });
+    };
+  },
+
+  chiudi: function(){ Scene.pop(); },
+
+  sfondo: function(gg){
+    // Cielo smorzato, una fila di colline lontane, terreno olivastro.
+    // Niente colori pieni: la quarta generazione è tutta mezzi toni.
+    var g1 = gg.createLinearGradient(0,0,0,60);
+    g1.addColorStop(0,'#9ccbe2'); g1.addColorStop(1,'#dcecef');
+    gg.fillStyle = g1; gg.fillRect(0,0,LARG,54);
+
+    // Filare di chiome lontane: una fila di gobbe morbide, senza vuoti.
+    gg.save();
+    gg.fillStyle = '#9dbb92';
+    gg.beginPath();
+    gg.moveTo(-10, 56);
+    for (var i=-10;i<=LARG+20;i+=22){
+      var alt = 34 + ((i*13) % 7) * 2.2;
+      gg.quadraticCurveTo(i+11, alt, i+22, 50);
+    }
+    gg.lineTo(LARG+20, 56); gg.closePath(); gg.fill();
+    gg.fillStyle = '#88a97e';
+    gg.beginPath();
+    gg.moveTo(-10, 56);
+    for (var i2=-2;i2<=LARG+20;i2+=26){
+      var a2 = 42 + ((i2*7) % 5) * 1.8;
+      gg.quadraticCurveTo(i2+13, a2, i2+26, 52);
+    }
+    gg.lineTo(LARG+20, 56); gg.closePath(); gg.fill();
+    gg.restore();
+
+    var g2 = gg.createLinearGradient(0,50,0,ALT);
+    g2.addColorStop(0,'#93ae74'); g2.addColorStop(0.45,'#7f9e63'); g2.addColorStop(1,'#6b8a52');
+    gg.fillStyle = g2; gg.fillRect(0,50,LARG,ALT-50);
+    gg.fillStyle = 'rgba(255,255,255,.10)';
+    gg.fillRect(0,50,LARG,1); gg.fillRect(0,53,LARG,1);
+    gg.fillStyle = 'rgba(80,100,70,.10)';
+    for (var m=0;m<44;m++){
+      var mx = (m*53) % LARG, my = 58 + ((m*29) % 60);
+      gg.fillRect(mx, my, 3, 2);
+    }
+  },
+
+  dis: function(gg){
+    var d = this.domanda(), a = this.a;
+    var sc = this.scossa > 0 ? ((this.scossa % 4 < 2) ? 2 : -2) : 0;
+
+    this.sfondo(gg);
+    if (this.lampo > 0){
+      gg.fillStyle = 'rgba(255,255,255,' + (this.lampo/44) + ')';
+      gg.fillRect(0,0,LARG,ALT);
+    }
+
+    var righe = d ? FONT.spezza(d.testo, LARG - 36) : [];
+
+    // Pedane e sfidanti. L'esaminatore sta più lontano e in alto,
+    // il giocatore di spalle più vicino, più grande e più in basso.
+    var sp = attore(a.veste || 'npc1').giu[0];
+    var sx = LARG - 74 + sc, sy = 30;
+    piattaforma(gg, sx + 13, sy + 40, 26, 7, '#9db881', '#7a9663');
+    gg.drawImage(sp, sx, sy, 28, 42);
+
+    piattaforma(gg, 46, 92, 36, 10, '#93ae74', '#6b8a52');
+    gg.drawImage(spriteDietro(), 28, 36, 36, 54);
+
+    // Riquadro dell'esaminatore: nome, unità e quante domande restano.
+    var restanti = this.coda.length;
+    UI.box(gg, 6, 4, 146, 28);
+    var nome = a.nome || 'Esaminatore';
+    while (FONT.misura(nome) > 104 && nome.length > 4) nome = nome.slice(0, -2) + '…';
+    FONT.scrivi(gg, nome, 13, 8, UIC.testo);
+    FONT.scrivi(gg, 'U' + Gioco.unita.numero, 138, 8, UIC.testoTenue);
+    FONT.scrivi(gg, '?', 13, 19, UIC.etichetta);
+    UI.barra(gg, 22, 20, 106, 4, this.totale ? (restanti/this.totale) : 0, UIC.hpRosso, UIC.hpFondo);
+    var conta = restanti + '/' + this.totale;
+    FONT.scrivi(gg, conta, 145 - FONT.misura(conta), 18, UIC.testoTenue);
+
+    // Riquadro del giocatore: punti salute e, sotto, la barra della
+    // collezione — che qui fa il mestiere della barra dell'esperienza.
+    UI.box(gg, LARG-158, 4, 152, 34);
+    FONT.scrivi(gg, 'TU', LARG-150, 8, UIC.testo);
+    var pc = Math.round(Gioco.percentuale()*100) + '%';
+    FONT.scrivi(gg, pc, LARG-14-FONT.misura(pc), 8, UIC.testoTenue);
+    FONT.scrivi(gg, 'PS', LARG-150, 19, UIC.etichetta);
+    UI.barraPS(gg, LARG-134, 20, 90, this.vite / VITE_MAX);
+    var ps = this.vite + '/' + VITE_MAX;
+    FONT.scrivi(gg, ps, LARG-14-FONT.misura(ps), 18, UIC.testo);
+    UI.barra(gg, LARG-150, 29, 136, 3, Gioco.percentuale(), '#5aa8e0', '#5a6068');
+
+    if (this.fase === 'intro' || this.fase === 'fine'){
+      disegnaFumetto(gg, a.nome, this.dlg.pagine[this.dlg.pag] || [], this.dlg.car);
+      Input.azzeraAree();
+      Input.area('avanti', 0, 0, LARG, ALT);
+      this.velo(gg);
+      return;
+    }
+
+    if (!d){ this.velo(gg); return; }
+
+    // Riquadro della domanda, sopra le risposte.
+    var hq = righe.length*10 + 12;
+    var yq = 110 - hq;
+    UI.box(gg, 5, yq, LARG-10, hq);
+    for (var r=0;r<righe.length;r++)
+      FONT.scrivi(gg, righe[r], 15, yq + 6 + r*10, UIC.testo);
+
+    // Le quattro risposte, come le voci di un menu della console:
+    // quella scelta si illumina e ha il cursore a lato.
+    Input.azzeraAree();
+    var y0 = 114, hOp = 22, gap = 2;
+    for (var o=0;o<4;o++){
+      var y = y0 + o*(hOp+gap);
+      var scelto = (o === this.sel);
+      UI.box(gg, 5, y, LARG-10, hOp, scelto ? '#fdf2cf' : null, scelto ? '#c8a020' : UIC.bordo);
+      FONT.scrivi(gg, String(o+1), 13, y + 7, scelto ? '#a8801a' : UIC.testoTenue);
+      var ro = FONT.spezza(d.opzioni[o] || '', LARG - 46);
+      if (ro.length === 1){
+        FONT.scrivi(gg, ro[0], 23, y + 7, UIC.testo);
+      } else {
+        FONT.scrivi(gg, ro[0], 23, y + 2, UIC.testo);
+        FONT.scrivi(gg, ro[1] || '', 23, y + 12, UIC.testo);
+      }
+      if (scelto) UI.cursore(gg, 0, y + 7, Gioco.tempo);
+      Input.area(o, 5, y, LARG-10, hOp);
+    }
+
+    this.velo(gg);
+  },
+
+  // Entrata in battaglia: due tende che si aprono. Serve a segnare lo
+  // stacco fra "sto camminando" e "mi stanno interrogando".
+  velo: function(gg){
+    if (this.trans <= 0) return;
+    var q = this.trans / TRANS_MAX;
+    var h = Math.ceil(ALT/2 * q);
+    gg.fillStyle = C.ink;
+    gg.fillRect(0, 0, LARG, h);
+    gg.fillRect(0, ALT-h, LARG, h);
+    gg.fillStyle = C.tealC;
+    gg.fillRect(0, h-2, LARG, 2);
+    gg.fillRect(0, ALT-h, LARG, 2);
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   16. SCENA: SPIEGAZIONE (il momento in cui si impara)
+   ══════════════════════════════════════════════════════════════════ */
+
+var scenaSpiegazione = {
+  entra: function(arg){
+    this.a = arg;
+    var d = arg.domanda, blocchi = [];
+    if (arg.giusta){
+      blocchi.push({ tono:'ok', titolo:'Esatto', testo:d.spiegazione });
+    } else {
+      var perche = (d.perche_no && d.perche_no[arg.scelta]) || '';
+      blocchi.push({ tono:'no', titolo:'Non è questa',
+        testo: (perche ? perche + ' ' : '') +
+               'La risposta giusta è: «' + d.opzioni[d.risposta-1] + '».' });
+      blocchi.push({ tono:'info', titolo:'Perché', testo:d.spiegazione });
+    }
+    this.blocchi = blocchi;
+    this.b = 0; this.pag = 0;
+    this.impagina();
+  },
+  impagina: function(){
+    this.pagine = FONT.pagine(this.blocchi[this.b].testo, LARG - 40, 11);
+    this.pag = 0;
+  },
+  agg: function(){},
+  input: function(){
+    if (!(Input.premuto('a') || Input.premuto('b') || Input.tap() === 'avanti')) return;
+    if (this.pag < this.pagine.length - 1){ this.pag++; return; }
+    if (this.b < this.blocchi.length - 1){ this.b++; this.impagina(); return; }
+    var a = this.a;
+    if (a.carta){
+      var dopo = a.dopo;
+      Scene.sostituisci(scenaCarta, { carta:a.carta, dopo:dopo });
+      return;
+    }
+    Scene.pop();
+    if (a.dopo) a.dopo();
+  },
+  dis: function(gg){
+    var b = this.blocchi[this.b];
+    var tinta = b.tono === 'ok' ? '#4e8a52' : (b.tono === 'no' ? '#b05548' : '#5a7fa8');
+    var gr = gg.createLinearGradient(0,0,0,ALT);
+    gr.addColorStop(0, b.tono === 'ok' ? '#e2efdf' : (b.tono === 'no' ? '#f2e2de' : '#e2eaf2'));
+    gr.addColorStop(1, '#cdd6cf');
+    gg.fillStyle = gr; gg.fillRect(0,0,LARG,ALT);
+
+    var simbolo = b.tono === 'ok' ? '✓' : (b.tono === 'no' ? '✗' : '★');
+    UI.box(gg, 5, 5, LARG-10, 18, tinta, UIC.bordo);
+    // Niente maiuscolo forzato: in italiano l'accento su una maiuscola
+    // in una griglia 5x7 si legge male, e qui i titoli hanno «è» e «é».
+    FONT.scrivi(gg, simbolo + ' ' + b.titolo, 13, 10, '#ffffff');
+
+    UI.box(gg, 5, 27, LARG-10, ALT-48);
+    var righe = this.pagine[this.pag] || [];
+    for (var i=0;i<righe.length;i++)
+      FONT.scrivi(gg, righe[i], 15, 35 + i*11, UIC.testo);
+
+    var nav = (this.pagine.length > 1)
+      ? ('pagina ' + (this.pag+1) + ' di ' + this.pagine.length + ' · premi A')
+      : 'premi A per continuare';
+    FONT.scrivi(gg, nav, 8, ALT-13, '#6b7268');
+    UI.avanti(gg, LARG-18, ALT-14, Gioco.tempo);
+
+    Input.azzeraAree();
+    Input.area('avanti', 0, 0, LARG, ALT);
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   17. SCENA: CARTA CONOSCENZA SBLOCCATA
+   ══════════════════════════════════════════════════════════════════ */
+
+var ICONE = null;
+
+var scenaCarta = {
+  entra: function(arg){ this.a = arg; this.t = 0; },
+  agg: function(){ this.t++; },
+  input: function(){
+    if (Input.premuto('a') || Input.premuto('b') || Input.tap() === 'avanti'){
+      var dopo = this.a.dopo;
+      Scene.pop();
+      if (dopo) dopo();
+    }
+  },
+  dis: function(gg){
+    gg.fillStyle = '#101828'; gg.fillRect(0,0,LARG,ALT);
+    // raggi
+    for (var i=0;i<16;i++){
+      var ang = i*0.3927 + this.t/120;
+      gg.save();
+      gg.translate(LARG/2, 96);
+      gg.rotate(ang);
+      gg.fillStyle = 'rgba(228,135,58,.09)';
+      gg.fillRect(0,-7,190,14);
+      gg.restore();
+    }
+    var titolo = 'NUOVA CARTA CONOSCENZA';
+    FONT.scrivi(gg, titolo, (LARG - FONT.misura(titolo))/2, 10, C.ambra);
+
+    var salto = Math.max(0, 6 - this.t/3);
+    disegnaCarta(gg, this.a.carta, (LARG-CARTA_L)/2, 30 - salto);
+
+    var msg = 'premi A';
+    FONT.scrivi(gg, msg, (LARG - FONT.misura(msg))/2, ALT-14, '#5b6b85');
+    Input.azzeraAree();
+    Input.area('avanti', 0, 0, LARG, ALT);
+  }
+};
+
+var CARTA_L = 224, CARTA_A = 150;
+
+function disegnaCarta(gg, carta, x, y){
+  var w = CARTA_L, h = CARTA_A;
+  gg.fillStyle = 'rgba(15,20,32,.5)'; gg.fillRect(x+3, y+3, w, h);
+  UI.box(gg, x, y, w, h, C.carta, C.ink);
+
+  gg.fillStyle = C.teal; gg.fillRect(x+4, y+4, w-8, 14);
+  FONT.scrivi(gg, (carta.categoria || '').toUpperCase(), x+9, y+7, C.carta);
+
+  if (!ICONE) ICONE = costruisciIcone();
+  var ico = ICONE[carta.icona] || ICONE.cellula;
+  gg.fillStyle = '#e9e4d6'; gg.fillRect(x+4, y+18, w-8, 36);
+  gg.drawImage(ico, x + 14, y + 20, 32, 32);
+
+  var righeT = FONT.spezza(carta.titolo, w - 62);
+  FONT.scrivi(gg, righeT[0], x+54, y + (righeT.length > 1 ? 26 : 31), C.cremisi);
+  if (righeT.length > 1) FONT.scrivi(gg, righeT[1], x+54, y+37, C.cremisi);
+
+  gg.fillStyle = '#d8d2c2'; gg.fillRect(x+8, y+58, w-16, 1);
+
+  var righe = FONT.spezza(carta.testo || '', w-18);
+  var max = 9;
+  for (var i=0;i<righe.length && i<max;i++)
+    FONT.scrivi(gg, righe[i], x+9, y+64 + i*9, C.ink);
+  if (righe.length > max) FONT.scrivi(gg, '…', x+9, y+64 + max*9, '#5b6b85');
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   18. SCENA: ALBUM DELLE CARTE
+   ══════════════════════════════════════════════════════════════════ */
+
+var scenaAlbum = {
+  entra: function(){
+    this.tutte = [];
+    var self = this;
+    Gioco.giocabili().forEach(function(u){
+      Gioco.carteUnita(u).forEach(function(c){ self.tutte.push(c); });
+    });
+    this.sel = 0; this.dettaglio = null;
+    this.perPagina = 12;
+  },
+  input: function(){
+    var tap = Input.tap();
+    if (this.dettaglio){
+      if (Input.premuto('a') || Input.premuto('b') || tap !== null) this.dettaglio = null;
+      return;
+    }
+    if (Input.premuto('b') || Input.premuto('album') || tap === 'chiudi'){ Scene.pop(); return; }
+    if (Input.premuto('sx')) this.sel = Math.max(0, this.sel-1);
+    if (Input.premuto('dx')) this.sel = Math.min(this.tutte.length-1, this.sel+1);
+    if (Input.premuto('su')) this.sel = Math.max(0, this.sel-3);
+    if (Input.premuto('giu')) this.sel = Math.min(this.tutte.length-1, this.sel+3);
+    if (typeof tap === 'number'){ this.sel = tap; this.apri(); return; }
+    if (Input.premuto('a')) this.apri();
+  },
+  apri: function(){
+    var c = this.tutte[this.sel];
+    if (c && Gioco.save.carte[c.id]) this.dettaglio = c;
+  },
+  agg: function(){},
+  dis: function(gg){
+    gg.fillStyle = '#141d2c'; gg.fillRect(0,0,LARG,ALT);
+    FONT.scrivi(gg, 'ALBUM DELLE CARTE', 10, 8, C.ambra);
+    var conta = Gioco.carteAvute() + ' / ' + Gioco.carteTotali();
+    FONT.scrivi(gg, conta, LARG - FONT.misura(conta) - 10, 8, C.tealC);
+    gg.fillStyle = C.ombra; gg.fillRect(10, 19, LARG-20, 1);
+
+    Input.azzeraAree();
+    var pagina = Math.floor(this.sel / this.perPagina);
+    var inizio = pagina * this.perPagina;
+    var COL = 3, cw = 96, ch = 34, x0 = 10, y0 = 26;
+
+    if (!ICONE) ICONE = costruisciIcone();
+
+    for (var i=0;i<this.perPagina;i++){
+      var idx = inizio + i;
+      if (idx >= this.tutte.length) break;
+      var c = this.tutte[idx];
+      var avuta = !!Gioco.save.carte[c.id];
+      var col = i % COL, rig = Math.floor(i / COL);
+      var x = x0 + col*(cw+6), y = y0 + rig*(ch+5);
+      var scelto = (idx === this.sel);
+      UI.box(gg, x, y, cw, ch, avuta ? C.carta : '#232c3d', scelto ? C.ambra : C.ink);
+      var ico = ICONE[c.icona] || ICONE.cellula;
+      if (avuta){
+        gg.drawImage(ico, x+4, y+ch/2-8, 16, 16);
+        var rt = FONT.spezza(c.titolo, cw-28);
+        FONT.scrivi(gg, rt[0], x+23, y + (rt.length>1 ? 8 : 13), C.ink);
+        if (rt.length>1) FONT.scrivi(gg, rt[1], x+23, y+18, C.ink);
+      } else {
+        UI.lucchetto(gg, x+cw/2-4, y+8, '#3a4761');
+        FONT.scrivi(gg, '???', x+cw/2-7, y+21, '#3a4761');
+      }
+      Input.area(idx, x, y, cw, ch);
+    }
+
+    var np = Math.ceil(this.tutte.length / this.perPagina);
+    if (np > 1){
+      var s = 'pagina ' + (pagina+1) + '/' + np + '  ·  frecce per sfogliare';
+      FONT.scrivi(gg, s, (LARG - FONT.misura(s))/2, ALT-28, '#5b6b85');
+    }
+    FONT.scrivi(gg, 'A apre · B o I esce', 10, ALT-14, '#5b6b85');
+    UI.box(gg, LARG-42, ALT-19, 34, 16, '#1e2636', C.ink);
+    FONT.scrivi(gg, 'ESCI', LARG-38, ALT-14, C.cremisiC);
+    Input.area('chiudi', LARG-42, ALT-19, 34, 16);
+
+    if (this.dettaglio){
+      gg.fillStyle = 'rgba(10,14,22,.85)'; gg.fillRect(0,0,LARG,ALT);
+      disegnaCarta(gg, this.dettaglio, (LARG-CARTA_L)/2, 26);
+      var m = 'premi A per chiudere';
+      FONT.scrivi(gg, m, (LARG - FONT.misura(m))/2, ALT-14, '#5b6b85');
+      Input.azzeraAree();
+      Input.area('chiudi2', 0,0,LARG,ALT);
+    }
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   19. SCENA: MAPPA DEL PROGRAMMA
+   ══════════════════════════════════════════════════════════════════ */
+
+var scenaMappa = {
+  entra: function(){ this.sel = 0; this.msg = null; this.msgT = 0; },
+  agg: function(){ if (this.msgT>0) this.msgT--; },
+  input: function(){
+    var tap = Input.tap();
+    if (Input.premuto('b') || Input.premuto('mappa') || tap === 'chiudi'){ Scene.pop(); return; }
+    if (Input.premuto('su')) this.sel = Math.max(0, this.sel-1);
+    if (Input.premuto('giu')) this.sel = Math.min(Gioco.dati.unita.length-1, this.sel+1);
+    if (typeof tap === 'number'){ this.sel = tap; this.scegli(); return; }
+    if (Input.premuto('a')) this.scegli();
+    if (Input.premuto('album')) { Scene.pop(); Scene.push(scenaAlbum); }
+  },
+  scegli: function(){
+    var u = Gioco.dati.unita[this.sel];
+    if (u.stato === 'giocabile'){
+      if (u.id !== Gioco.unita.id){
+        Gioco.unita = u;
+        costruisciZona(u);
+        Gioco.player.tx = Mondo.spawn.tx; Gioco.player.ty = Mondo.spawn.ty;
+      }
+      Scene.pop();
+      return;
+    }
+    this.msg = 'Unità ' + u.numero + ' — in arrivo. Per ora si studia l\'Unità 7.';
+    this.msgT = 150;
+  },
+  dis: function(gg){
+    gg.fillStyle = '#141d2c'; gg.fillRect(0,0,LARG,ALT);
+    FONT.scrivi(gg, 'IL PROGRAMMA DI BIOLOGIA', 10, 7, C.ambra);
+    var pc = Math.round(Gioco.percentuale()*100) + '% coperto';
+    FONT.scrivi(gg, pc, LARG - FONT.misura(pc) - 10, 7, C.tealC);
+    UI.barra(gg, 10, 17, LARG-20, 4, Gioco.percentuale(), C.ambra, '#2b3550');
+
+    Input.azzeraAree();
+    var y0 = 26, h = 22;
+    for (var i=0;i<Gioco.dati.unita.length;i++){
+      var u = Gioco.dati.unita[i];
+      var y = y0 + i*(h+2);
+      var giocabile = u.stato === 'giocabile';
+      var scelto = (i === this.sel);
+      UI.box(gg, 8, y, LARG-16, h, giocabile ? C.carta : '#232c3d', scelto ? C.ambra : C.ink);
+
+      var col = COLORI_ZONA[u.colore] || C.teal;
+      gg.fillStyle = giocabile ? col : '#3a4761';
+      gg.fillRect(11, y+3, 4, h-6);
+
+      FONT.scrivi(gg, 'U' + u.numero, 19, y+3, giocabile ? UIC.testo : '#98a0ae');
+      var nome = u.zona || u.titolo;
+      FONT.scrivi(gg, nome, 40, y+3, giocabile ? UIC.testo : '#98a0ae');
+
+      var rt = FONT.spezza(u.titolo, LARG-74);
+      var sotto = rt[0] + (rt.length > 1 ? '…' : '');
+      FONT.scrivi(gg, sotto, 19, y+12, giocabile ? UIC.testoTenue : '#6d7686');
+
+      if (!giocabile){
+        UI.lucchetto(gg, LARG-26, y+6, '#98a0ae');
+      } else {
+        UI.medaglia(gg, LARG-24, y+h/2, 7, !!Gioco.save.medaglie[u.id]);
+      }
+      if (scelto) UI.cursore(gg, 1, y+7, Gioco.tempo);
+      Input.area(i, 8, y, LARG-16, h);
+    }
+
+    if (this.msgT>0 && this.msg){
+      var righe = FONT.spezza(this.msg, LARG-40);
+      UI.box(gg, 12, ALT-34, LARG-24, righe.length*10+12, C.carta);
+      righe.forEach(function(r,i){ FONT.scrivi(gg, r, 22, ALT-28+i*10, C.ink); });
+    } else {
+      FONT.scrivi(gg, 'A entra · B esce', 10, ALT-12, '#5b6b85');
+      UI.box(gg, LARG-42, ALT-17, 34, 15, '#1e2636', C.ink);
+      FONT.scrivi(gg, 'ESCI', LARG-38, ALT-13, C.cremisiC);
+      Input.area('chiudi', LARG-42, ALT-17, 34, 15);
+    }
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   20. SCENA: CERIMONIA DELLA MEDAGLIA
+   ══════════════════════════════════════════════════════════════════ */
+
+var scenaMedaglia = {
+  entra: function(u){ this.u = u; this.t = 0; },
+  agg: function(){ this.t++; },
+  input: function(){
+    if (this.t > 40 && (Input.premuto('a') || Input.tap() === 'avanti')) Scene.pop();
+  },
+  dis: function(gg){
+    var t = this.t;
+    gg.fillStyle = '#101828'; gg.fillRect(0,0,LARG,ALT);
+    for (var i=0;i<20;i++){
+      var ang = i*0.314 + t/90;
+      gg.save(); gg.translate(LARG/2, 84); gg.rotate(ang);
+      gg.fillStyle = 'rgba(232,192,74,.10)'; gg.fillRect(0,-8,200,16); gg.restore();
+    }
+    var tit = 'MEDAGLIA CONQUISTATA';
+    FONT.scrivi(gg, tit, (LARG - FONT.misura(tit))/2, 20, C.ambra);
+
+    var r = 26 + Math.sin(t/14)*1.5;
+    UI.medaglia(gg, LARG/2, 84, r, true);
+
+    var nome = (this.u.medaglia && this.u.medaglia.nome) || 'Medaglia';
+    FONT.scrivi(gg, nome, (LARG - FONT.misura(nome))/2, 122, C.carta);
+
+    var sotto = 'Unità ' + this.u.numero + ' completata';
+    FONT.scrivi(gg, sotto, (LARG - FONT.misura(sotto))/2, 136, C.tealC);
+
+    UI.box(gg, 20, 150, LARG-40, 34, C.carta);
+    var frase = 'Nel tuo corpo la morte non è il contrario della vita: è uno dei suoi strumenti.';
+    var righe = FONT.spezza(frase, LARG-60);
+    righe.forEach(function(rr,i){
+      FONT.scrivi(gg, rr, (LARG - FONT.misura(rr))/2, 157 + i*10, C.ink);
+    });
+
+    var pc = 'Programma coperto: ' + Math.round(Gioco.percentuale()*100) + '%';
+    FONT.scrivi(gg, pc, (LARG - FONT.misura(pc))/2, ALT-14, '#5b6b85');
+    Input.azzeraAree(); Input.area('avanti', 0,0,LARG,ALT);
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   21. CODICE DI RIPRESA (funziona anche dove non si può salvare)
+   ══════════════════════════════════════════════════════════════════ */
+
+function apriCodice(){
+  var dlg = elem('modale');
+  elem('modale-titolo').textContent = 'Codice di ripresa';
+  elem('modale-corpo').innerHTML =
+    '<p>Questo codice contiene il tuo progresso: carte, missioni e medaglie. ' +
+    'Copialo e conservalo, oppure incollane uno qui e premi <b>Riprendi</b> ' +
+    'per continuare su un altro dispositivo.</p>' +
+    '<textarea id="campoCodice" spellcheck="false"></textarea>' +
+    '<div class="riga"><button type="button" id="btnCopia">Copia</button>' +
+    '<button type="button" id="btnRiprendi">Riprendi da questo codice</button></div>' +
+    '<div id="esitoCodice"></div>';
+  var campo = elem('campoCodice');
+  campo.value = Save.esporta(Gioco.save);
+  elem('btnCopia').onclick = function(){
+    campo.select();
+    try { document.execCommand('copy'); elem('esitoCodice').textContent = 'Copiato.'; }
+    catch(e){ elem('esitoCodice').textContent = 'Selezionalo e copialo a mano.'; }
+  };
+  elem('btnRiprendi').onclick = function(){
+    var d = Save.importa(campo.value);
+    if (!d){ elem('esitoCodice').textContent = 'Questo codice non è valido.'; return; }
+    Gioco.save = d;
+    Save.salva(d);
+    elem('esitoCodice').textContent = 'Fatto. Ricarico…';
+    setTimeout(function(){ location.reload(); }, 700);
+  };
+  if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open','');
+}
+elem('modale-ok').onclick = function(){
+  var d = elem('modale');
+  if (d.close) d.close(); else d.removeAttribute('open');
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   22. CICLO PRINCIPALE E PARTENZA
+   ══════════════════════════════════════════════════════════════════ */
+
+var fermo = false;
+
+function fotogramma(){
+  if (fermo) return;
+  try {
+    Gioco.tempo++;
+    var s = Scene.cima();
+    if (s){
+      if (s.input) s.input();
+      if (s.agg) s.agg();
+      if (s.dis) s.dis(g);
+    }
+  } catch(e){
+    // Al primo errore ci si ferma: chiedere un altro fotogramma
+    // vorrebbe dire ripetere l'errore 60 volte al secondo.
+    fermo = true;
+    mostraErrore('BioQuest si è fermato',
+      '<p>C\'è stato un problema mentre il gioco girava. Il progresso salvato non è stato toccato: ' +
+      'ricaricando la pagina riprendi da dov\'eri.</p><pre>' +
+      scappa((e && e.stack) || e) + '</pre>');
+    return;
+  }
+  requestAnimationFrame(fotogramma);
+}
+
+function avvia(){
+  var dati;
+  try {
+    dati = leggiContenuti();
+  } catch(err){
+    mostraErrore('Errore nei contenuti', err.amichevole || scappa(String(err)));
+    return;
+  }
+
+  var errori = controlla(dati);
+  if (errori.length){
+    mostraErrore('I contenuti hanno ' + errori.length +
+      (errori.length === 1 ? ' problema' : ' problemi'),
+      '<p>Il gioco non parte finché non sono sistemati. Sono tutti dentro il blocco dei contenuti, ' +
+      'in cima al file.</p><pre>' + errori.map(function(e,i){ return (i+1) + '. ' + e; }).join('\n\n') +
+      '</pre>');
+    return;
+  }
+
+  Gioco.dati = dati;
+  Gioco.save = Save.carica();
+
+  var giocabili = Gioco.giocabili();
+  Gioco.unita = Gioco.unitaPer(Gioco.save.unita) || giocabili[0];
+  if (!Gioco.unita || Gioco.unita.stato !== 'giocabile') Gioco.unita = giocabili[0];
+
+  try {
+    costruisciZona(Gioco.unita);
+  } catch(e){
+    mostraErrore('La piantina della zona non torna', '<pre>' + scappa(e.message) + '</pre>');
+    return;
+  }
+
+  // Posizione salvata: valida solo se la zona è ancora la stessa.
+  var p = Gioco.save.pos;
+  if (p && p.unita === Gioco.unita.id && p.firma === Mondo.firma){
+    Gioco.player.tx = p.tx; Gioco.player.ty = p.ty;
+  } else {
+    Gioco.player.tx = Mondo.spawn.tx; Gioco.player.ty = Mondo.spawn.ty;
+  }
+  Gioco.player.dir = 'su';
+
+  ridimensiona();
+  window.addEventListener('resize', ridimensiona);
+  window.addEventListener('orientationchange', function(){ setTimeout(ridimensiona, 120); });
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', ridimensiona);
+
+  Scene.push(scenaTitolo);
+  requestAnimationFrame(fotogramma);
+}
+
+window.addEventListener('error', function(ev){
+  if (fermo) return;
+  fermo = true;
+  mostraErrore('BioQuest non è riuscito a partire',
+    '<pre>' + scappa(ev.message + '\n' + (ev.filename||'') + ':' + (ev.lineno||'')) + '</pre>');
+});
+
+avvia();
+})();
+</script>
+
+
+</body>
+</html>
