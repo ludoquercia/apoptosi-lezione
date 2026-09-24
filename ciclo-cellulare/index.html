@@ -834,7 +834,17 @@ html:not(.rv) [data-s2329-scene] .s2329-layout,[data-s2329-scene][data-live-all=
 }
 
 </style>
-</head>
+<style id="slide-delete-style">
+ .slide[data-deck-deleted]{display:none!important}
+ #deck-delete,#deck-undo{display:inline-flex;align-items:center;justify-content:center;min-width:40px;min-height:40px;padding:.45rem}
+ #deck-undo[hidden]{display:none}#deck-delete:hover{color:#ff819f;border-color:#ff819f}
+ #deck-delete:disabled{opacity:.35;cursor:default}
+ .deck-tools button:focus-visible{outline:2px solid #3ff59b;outline-offset:3px}
+ #deck-delete-status{position:fixed;left:1rem;bottom:3.5rem;z-index:49;max-width:min(32rem,calc(100vw - 2rem));margin:0;padding:.55rem .8rem;border-radius:8px;background:#0b131df2;color:#b8c9db;font:14px/1.4 system-ui;pointer-events:none}
+ #deck-delete-status:empty{display:none}
+ @media(max-width:760px){.deck-counter{top:auto;bottom:.7rem}.deck-tools{max-width:calc(100vw - 1.4rem);flex-wrap:wrap;gap:.25rem}.deck-tools button{font-size:.8rem;padding:.45rem .5rem}}
+ @media print{#deck-delete-status{display:none}}
+ </style></head>
 <body>
 
 <div id="bar"></div>
@@ -1960,8 +1970,8 @@ html:not(.rv) [data-s2329-scene] .s2329-layout,[data-s2329-scene][data-live-all=
 
 
 
-<div class="deck-tools" aria-label="Controlli della lezione"><button id="deck-menu" type="button" aria-haspopup="dialog">Indice</button><button id="deck-mode" type="button" title="P: cambia modalità" aria-pressed="false">Lettura</button></div>
-<div class="deck-counter" id="deck-counter" aria-label="Schermata corrente"></div>
+<div class="deck-tools" aria-label="Controlli della lezione"><button id="deck-menu" type="button" aria-haspopup="dialog">Indice</button><button id="deck-delete" type="button" aria-label="Elimina slide corrente" title="Elimina la slide corrente · salvato in questo browser"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></svg></button><button id="deck-undo" type="button" aria-label="Annulla eliminazione slide" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 4-5 5 5 5M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button><button id="deck-mode" type="button" title="P: cambia modalità" aria-pressed="false">Lettura</button></div>
+<p id="deck-delete-status" role="status" aria-live="polite"></p><div class="deck-counter" id="deck-counter" aria-label="Schermata corrente"></div>
 <dialog class="deck-dialog" id="deck-index" aria-labelledby="index-title"><button class="close" type="button" aria-label="Chiudi indice">Chiudi</button><h2 id="index-title">Ciclo cellulare</h2><nav class="deck-switch" aria-label="Le due presentazioni"><span aria-current="page">Ciclo cellulare · 108</span><a class="deck-other" href="https://ludoquercia.github.io/apoptosi-lezione/">Apoptosi · 52 ↗</a></nav><p class="deck-help">108 schermate · 7 capitoli · dettagli di studio visibili<br>Spazio/click: rivela, poi avanza · P: lettura/presentazione · ↑/←: annulla il passaggio · R: ricomincia la schermata · A: rivela tutto nella schermata · I: indice</p><label for="index-search" class="deck-help">Cerca anche nomi e dettagli nel testo</label><input id="index-search" type="search" placeholder="Mps1, REC8, ciclina…"><div id="index-list"></div></dialog>
 <dialog class="deck-dialog" id="deck-note" aria-labelledby="note-title"><button class="close" type="button" aria-label="Chiudi approfondimento">Chiudi</button><h2 id="note-title"></h2><p class="note-source"></p><div class="note-copy"></div></dialog>
 <script type="application/json" id="chapter-data">[["ciclo","Ciclo cellulare","u-ciclo"],["mitosi","Mitosi e citodieresi","r-mitosis-d1"],["controllo","Segnali, danno e tumori","u-segnali"],["germinali","Linea germinale","u-linea-germinale"],["meiosi","Meiosi e variabilità","u-meiosi"],["gameti","Gameti e fecondazione","u-ovocita"]]</script>
@@ -2157,11 +2167,15 @@ html:not(.rv) [data-s2329-scene] .s2329-layout,[data-s2329-scene][data-live-all=
  function update(){sync();bar.style.width=(scrollY/Math.max(1,root.scrollHeight-innerHeight)*100)+'%';cue();ticking=false;}
  function openDialog(d){lastFocus=document.activeElement;d.showModal();}
  function closeDialog(d){d.close();if(lastFocus?.focus)lastFocus.focus();}
+ function rebuildNavigation(){
+ dots.replaceChildren();indexList.replaceChildren();
  chapterData.forEach(([id,name,target])=>{
   const a=document.createElement('a');a.href='#'+target;a.setAttribute('aria-label',name);a.title=name;dots.append(a);
   const group=document.createElement('div');group.className='deck-index-group';const heading=document.createElement('h3');heading.textContent=name;group.append(heading);
   slides.forEach((s,i)=>{if(s.dataset.chapter!==id)return;const link=document.createElement('a');link.href='#'+s.id;const title=s.querySelector('h1,h2').textContent.replace(/\s+/g,' ').trim();link.innerHTML='<span>'+String(i+1).padStart(2,'0')+'</span>'+escape(title);link.dataset.search=(name+' '+s.textContent.replace(/\s+/g,' ')+' '+(s.dataset.sourcePages||'').split(',').map(p=>'pagina '+p).join(' ')).toLocaleLowerCase('it');group.append(link);});indexList.append(group);
  });
+ }
+ rebuildNavigation();
  document.getElementById('deck-menu').addEventListener('click',safe(()=>openDialog(indexDialog)));
  modeButton.addEventListener('click',safe(()=>{preferred=!preferred;mode();modeButton.blur();}));
  [indexDialog,noteDialog].forEach(d=>{
@@ -2191,6 +2205,63 @@ html:not(.rv) [data-s2329-scene] .s2329-layout,[data-s2329-scene][data-live-all=
  cueEl.setAttribute('role','status');cueEl.setAttribute('aria-live','polite');cueEl.setAttribute('aria-atomic','true');
  // Diagnostica riproducibile; nessuna API di modifica o dipendenza esterna.
  window.CicloReveals={version:6,modePolicy:'present=1-or-viewport-width',forcePresentation,presentationMinWidth:981,report:{sections:plans.map(p=>({id:p.id,steps:p.total,kind:p.kind,targets:p.targets.length,actors:p.actors.length})),graphicPlans,foundationFigures:plans.filter(p=>p.foundation).map(p=>p.id),oneShotFigures:[],warnings,staticFigures:plans.filter(p=>p.slide.querySelector('svg')&&!p.foundation&&!graphicPlans.includes(p.id)).map(p=>p.id)}};
+ // Slide editing shares the navigator's arrays so every control sees the same deck.
+ const originalSlides=[...slides],originalPlans=[...plans],originalChapters=chapterData.map(c=>[...c]);
+ const deletionKey='agtest:ciclo-cellulare:deleted-slides:v1';
+ const deleteButton=document.getElementById('deck-delete'),undoButton=document.getElementById('deck-undo');
+ const deleteStatus=document.getElementById('deck-delete-status');
+ let deleted=[];
+ try{const saved=JSON.parse(localStorage.getItem(deletionKey)||'[]');if(Array.isArray(saved))deleted=[...new Set(saved.filter(id=>originalSlides.some(s=>s.id===id)))].slice(0,originalSlides.length-1);}catch{}
+ function saveDeletions(){try{localStorage.setItem(deletionKey,JSON.stringify(deleted));return true;}catch{return false;}}
+ function refreshDeck(targetId){
+  const excluded=new Set(deleted);
+  originalSlides.forEach((s,i)=>{
+   const removed=excluded.has(s.id);s.toggleAttribute('data-deck-deleted',removed);
+   if(removed){originalPlans[i].step=0;originalPlans[i].showAll=false;render(originalPlans[i]);s.classList.remove('in');}
+  });
+  slides.splice(0,slides.length,...originalSlides.filter(s=>!excluded.has(s.id)));
+  plans.splice(0,plans.length,...originalPlans.filter(p=>!excluded.has(p.id)));
+  chapterData.splice(0,chapterData.length,...originalChapters.flatMap(([id,name])=>{
+   const first=slides.find(s=>s.dataset.chapter===id);return first?[[id,name,first.id]]:[];
+  }));
+  rebuildNavigation();
+  document.getElementById('index-search').dispatchEvent(new Event('input'));
+  const deckLabel=document.querySelector('.deck-switch [aria-current="page"]');if(deckLabel)deckLabel.textContent='Ciclo cellulare · '+slides.length;
+  const help=document.querySelector('#deck-index .deck-help');if(help)help.innerHTML=help.innerHTML.replace(/\d+ schermate · \d+ capitoli/,slides.length+' schermate · '+chapterData.length+' capitoli');
+  deleteButton.disabled=slides.length<=1;
+  deleteButton.title=slides.length<=1?'Conserva almeno una slide':'Elimina la slide corrente · salvato in questo browser';
+  undoButton.hidden=!deleted.length;
+  const last=originalSlides.find(s=>s.id===deleted.at(-1));
+  undoButton.title=last?'Ripristina: '+last.querySelector('h1,h2').textContent.trim():'Annulla eliminazione';
+  if(window.CicloReveals)window.CicloReveals.report.sections=plans.map(p=>({id:p.id,steps:p.total,kind:p.kind,targets:p.targets.length,actors:p.actors.length}));
+  active=-1;
+  if(targetId){const index=slides.findIndex(s=>s.id===targetId);go(Math.max(0,index));}
+  document.dispatchEvent(new Event('deckchange'));
+ }
+ function announceDeletion(message,persisted){
+  deleteStatus.textContent=message+(persisted?'':' · Salvataggio non disponibile: modifica valida solo finché la pagina resta aperta.');
+ }
+ deleteButton.addEventListener('click',safe(()=>{
+  if(slides.length<=1)return;
+  const index=current(),slide=slides[index],next=slides[index+1]||slides[index-1];
+  deleted.push(slide.id);const persisted=saveDeletions();
+  refreshDeck(next.id);announceDeletion('Slide eliminata. Puoi annullare con la freccia accanto al cestino.',persisted);
+  deleteButton.blur();
+ }));
+ undoButton.addEventListener('click',safe(()=>{
+  const id=deleted.pop();if(!id)return;
+  const persisted=saveDeletions();refreshDeck(id);announceDeletion('Slide ripristinata.',persisted);undoButton.blur();
+ }));
+ addEventListener('storage',safe(e=>{
+  if(e.key!==deletionKey)return;
+  try{const saved=JSON.parse(e.newValue||'[]');if(!Array.isArray(saved))return;
+   const currentId=slides[current()].id;
+   deleted=[...new Set(saved.filter(id=>originalSlides.some(s=>s.id===id)))].slice(0,originalSlides.length-1);
+   refreshDeck(currentId);
+  }catch{}
+ }));
+ refreshDeck();
+
  root.classList.add('ud-ready','live-ready');activate(current());mode();update();
  }catch(error){failOpen(error);}
 })();
