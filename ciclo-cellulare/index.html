@@ -860,6 +860,16 @@ html:not(.rv) [data-s2329-scene] .s2329-layout,[data-s2329-scene][data-live-all=
 #deck-edit .deck-edit-help{font-size:12px;color:#93a9b9;margin:14px 0 0}
 @media(max-width:500px){#deck-edit{inset:4.5rem auto auto .7rem;width:calc(100vw - 1.4rem);padding:18px}}
 @media print{#deck-edit{display:none!important}}
+</style><style id="text-edit-style">#deck-text-edit{display:inline-flex;gap:.45rem;align-items:center}
+#deck-text-save[hidden],#deck-text-cancel[hidden]{display:none}
+#deck-text-save{color:#3ff59b;border-color:#3ff59b}
+html.text-editing #deck-text-edit{color:#3ff59b;border-color:#3ff59b}
+html.text-editing .deck-tools button:disabled{opacity:.35;cursor:default}
+[data-text-field][contenteditable]{outline:1px dashed #3ff59b88;outline-offset:5px;border-radius:3px;cursor:text;caret-color:#3ff59b;white-space:pre-wrap}
+[data-text-field][contenteditable]:focus{outline:2px solid #3ff59b;background:#3ff59b0b}
+[data-text-modified]{white-space:pre-wrap}
+@media(max-width:760px){#deck-text-edit span{display:none}.deck-tools{flex-wrap:wrap}html.text-editing .deck-tools>button:not(#deck-text-edit):not(#deck-text-save):not(#deck-text-cancel){display:none}}
+@media print{[data-text-field][contenteditable]{outline:none;background:none}}
 </style></head>
 <body>
 
@@ -1986,7 +1996,7 @@ html:not(.rv) [data-s2329-scene] .s2329-layout,[data-s2329-scene][data-live-all=
 
 
 
-<div class="deck-tools" aria-label="Controlli della lezione"><button id="deck-menu" type="button" aria-haspopup="dialog">Indice</button><button id="deck-delete" type="button" aria-label="Elimina slide o parte" aria-haspopup="dialog" title="Elimina la slide corrente · salvato in questo browser"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></svg></button><button id="deck-undo" type="button" aria-label="Annulla eliminazione slide" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 4-5 5 5 5M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button><button id="deck-mode" type="button" title="P: cambia modalità" aria-pressed="false">Lettura</button></div>
+<div class="deck-tools" aria-label="Controlli della lezione"><button id="deck-menu" type="button" aria-haspopup="dialog">Indice</button><button id="deck-text-edit" type="button" title="Modifica il testo della slide" aria-label="Modifica testo" aria-pressed="false"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5 4 4M4 20l5-1L20 8a2.8 2.8 0 0 0-4-4L5 15l-1 5Z"/></svg><span>Modifica testo</span></button><button id="deck-text-save" type="button" hidden>Salva</button><button id="deck-text-cancel" type="button" hidden>Annulla</button><button id="deck-delete" type="button" aria-label="Elimina slide o parte" aria-haspopup="dialog" title="Elimina la slide corrente · salvato in questo browser"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></svg></button><button id="deck-undo" type="button" aria-label="Annulla ultima modifica" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 4-5 5 5 5M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button><button id="deck-mode" type="button" title="P: cambia modalità" aria-pressed="false">Lettura</button></div>
 <dialog id="deck-edit" aria-labelledby="deck-edit-title">
  <button id="deck-edit-close" type="button" aria-label="Chiudi menu eliminazione">×</button>
  <h2 id="deck-edit-title">Cosa vuoi eliminare?</h2>
@@ -2032,7 +2042,7 @@ html:not(.rv) [data-s2329-scene] .s2329-layout,[data-s2329-scene][data-live-all=
  let preferred=true,presenting=false,active=-1,ticking=false,lastFocus;
  const plans=[],warnings=[],graphicPlans=[];
  // Keep original step IDs: animation scripts rely on these numbers.
- let removedParts={};
+ let removedParts={},textEdits={};
  function keptSteps(plan){return Array.from({length:plan.total},(_,i)=>i+1).filter(n=>!removedParts[plan.id]?.includes(n));}
  function lastKeptStep(plan){return keptSteps(plan).at(-1)||0;}
  function applyPartVisibility(plan){
@@ -2255,12 +2265,13 @@ html:not(.rv) [data-s2329-scene] .s2329-layout,[data-s2329-scene][data-live-all=
    const state=JSON.parse(localStorage.getItem(editKey)||'null');
    const old=JSON.parse(localStorage.getItem(deletionKey)||'[]');
    deleted=[...new Set((Array.isArray(state?.slides)?state.slides:Array.isArray(old)?old:[]).filter(id=>originalSlides.some(s=>s.id===id)))].slice(0,originalSlides.length-1);
+   textEdits=state?.texts&&typeof state.texts==='object'&&!Array.isArray(state.texts)?state.texts:{};
    removedParts={};
    for(const plan of originalPlans){const values=state?.parts?.[plan.id];if(Array.isArray(values))removedParts[plan.id]=[...new Set(values.filter(n=>Number.isInteger(n)&&n>=1&&n<=plan.total))];}
-   editHistory=Array.isArray(state?.history)?state.history.filter(e=>e&&originalSlides.some(s=>s.id===e.id)&&((e.kind==='slide'&&deleted.includes(e.id))||(e.kind==='part'&&removedParts[e.id]?.includes(e.step)))):deleted.map(id=>({kind:'slide',id}));
+   editHistory=Array.isArray(state?.history)?state.history.filter(e=>e&&originalSlides.some(s=>s.id===e.id)&&((e.kind==='slide'&&deleted.includes(e.id))||(e.kind==='part'&&removedParts[e.id]?.includes(e.step))||(e.kind==='text'&&Array.isArray(e.changes)))):deleted.map(id=>({kind:'slide',id}));
   }catch{deleted=[];removedParts={};editHistory=[];}
  }
- function saveDeletions(){try{localStorage.setItem(editKey,JSON.stringify({slides:deleted,parts:removedParts,history:editHistory}));return true;}catch{return false;}}
+ function saveDeletions(){try{localStorage.setItem(editKey,JSON.stringify({slides:deleted,parts:removedParts,history:editHistory,texts:textEdits}));return true;}catch{return false;}}
  loadEdits();originalPlans.forEach(render);
 
  function refreshDeck(targetId){
@@ -2282,7 +2293,7 @@ html:not(.rv) [data-s2329-scene] .s2329-layout,[data-s2329-scene][data-live-all=
   deleteButton.title='Elimina tutta la slide o una parte · salvato in questo browser';
   undoButton.hidden=!editHistory.length;
   const last=originalSlides.find(s=>s.id===deleted.at(-1));
-  undoButton.title='Annulla ultima eliminazione';
+  undoButton.title='Annulla ultima modifica';
   if(window.CicloReveals)window.CicloReveals.report.sections=plans.map(p=>({id:p.id,steps:p.total,kind:p.kind,targets:p.targets.length,actors:p.actors.length}));
   active=-1;
   if(targetId){const index=slides.findIndex(s=>s.id===targetId);go(Math.max(0,index));}
@@ -2303,7 +2314,7 @@ html:not(.rv) [data-s2329-scene] .s2329-layout,[data-s2329-scene][data-live-all=
   return text||'Passaggio '+n;
  }
  function finishEdit(message,persisted){
-  undoButton.hidden=!editHistory.length;undoButton.title='Annulla ultima eliminazione';
+  undoButton.hidden=!editHistory.length;undoButton.title='Annulla ultima modifica';
   editCompleted=true;editDialog.close();document.activeElement?.blur();
   announceDeletion(message,persisted);clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>deleteStatus.textContent='',persisted?6000:15000);
  }
@@ -2348,15 +2359,110 @@ html:not(.rv) [data-s2329-scene] .s2329-layout,[data-s2329-scene][data-live-all=
   const edit=editHistory.pop();if(!edit)return;
   const plan=originalPlans.find(p=>p.id===edit.id);
   if(edit.kind==='slide'){deleted=deleted.filter(id=>id!==edit.id);refreshDeck(edit.id);}
+  else if(edit.kind==='text'){undoTextEdit(edit);go(slides.indexOf(plan.slide),edit.step||0);}
   else{removedParts[edit.id]=removedParts[edit.id].filter(n=>n!==edit.step);go(slides.indexOf(plan.slide),edit.step);}
-  const persisted=saveDeletions();finishEdit(edit.kind==='slide'?'Slide ripristinata.':'Passaggio ripristinato.',persisted);
+  const persisted=saveDeletions();finishEdit(edit.kind==='text'?'Testo ripristinato.':edit.kind==='slide'?'Slide ripristinata.':'Passaggio ripristinato.',persisted);
   document.dispatchEvent(new Event('deckchange'));
  }));
  addEventListener('storage',safe(e=>{
   if(e.key!==editKey)return;
-  const currentId=slides[current()].id;loadEdits();originalPlans.forEach(render);refreshDeck(currentId);
+  const currentId=slides[current()].id;if(textSession)endTextEdit(false);loadEdits();applySavedTexts();originalPlans.forEach(render);refreshDeck(currentId);
   if(editDialog.open)editDialog.close();
  }));
+
+ // Edit HTML text only; keep the slide/step containers and animation nodes intact.
+ const textButton=document.getElementById('deck-text-edit'),textSave=document.getElementById('deck-text-save'),textCancel=document.getElementById('deck-text-cancel');
+ const textFields=new Map();let textSession=null;
+ const allowedTags=new Set(['B','STRONG','EM','I','U','S','SUB','SUP','SPAN','BR']);
+ function cleanTextHTML(value){
+  const template=document.createElement('template');template.innerHTML=String(value);
+  function clean(parent){for(const node of [...parent.childNodes]){
+   if(node.nodeType===Node.TEXT_NODE)continue;
+   if(node.nodeType!==Node.ELEMENT_NODE){node.remove();continue;}
+   if(['SCRIPT','STYLE','IFRAME','OBJECT','SVG','MATH'].includes(node.tagName)){node.remove();continue;}
+   clean(node);
+   if(!allowedTags.has(node.tagName)){if(['DIV','P'].includes(node.tagName)&&node.previousSibling)node.before(document.createElement('br'));node.replaceWith(...node.childNodes);continue;}
+   for(const attr of [...node.attributes])if(attr.name!=='class')node.removeAttribute(attr.name);
+   // Only presentation classes already used for inline emphasis are retained.
+   if(node.hasAttribute('class')){const keep=[...node.classList].filter(c=>['mono','accent','gfp','pink','blue','muted'].includes(c));if(keep.length)node.className=keep.join(' ');else node.removeAttribute('class');}
+  }}clean(template.content);return template.innerHTML;
+ }
+ originalSlides.forEach(slide=>{
+  const candidates=[...slide.querySelectorAll('h1,h2,h3,p,dt,dd,li,th,td,[data-live-step]')].filter(e=>{
+   if(e.closest('svg,button,a,figcaption,.r-controls,.s2329-controls')||e.querySelector('svg,button,a,input,select,textarea'))return false;
+   if(!e.textContent.trim()||e.querySelector('[data-live-step],[data-live-actor-step],[data-foundation-figure-step]'))return false;
+   if(e.matches('[data-live-step]')&&!e.matches('h1,h2,h3,p,dt,dd,li,th,td,span'))return false;
+   return true;
+  });
+  const leaves=candidates.filter(e=>!candidates.some(other=>other!==e&&e.contains(other)));
+  leaves.forEach((element,index)=>{
+   const key=slide.id+':text:'+index;
+   element.dataset.textField=key;textFields.set(key,{element,slideId:slide.id,original:element.innerHTML});
+  });
+ });
+ function applySavedTexts(){
+  for(const [key,field]of textFields){
+   const value=typeof textEdits[key]==='string'?cleanTextHTML(textEdits[key]):field.original;
+   if(field.element.innerHTML!==value)field.element.innerHTML=value;
+   field.element.toggleAttribute('data-text-modified',typeof textEdits[key]==='string');
+  }
+ }
+ function undoTextEdit(edit){
+  for(const change of edit.changes){if(!textFields.has(change.key))continue;if(typeof change.before==='string')textEdits[change.key]=cleanTextHTML(change.before);else delete textEdits[change.key];}
+  applySavedTexts();rebuildNavigation();
+ }
+ function textNotice(message,persisted=true){
+  announceDeletion(message,persisted);clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>deleteStatus.textContent='',persisted?6000:15000);
+ }
+ function endTextEdit(save){
+  if(!textSession)return;
+  const session=textSession,changes=[];
+  for(const [key,before]of session.snapshot){
+   const field=textFields.get(key),element=field.element;
+   const after=element.innerHTML===before?before:cleanTextHTML(element.innerHTML);
+   if(save&&after!==before){changes.push({key,before:typeof textEdits[key]==='string'?textEdits[key]:null});if(after===field.original)delete textEdits[key];else textEdits[key]=after;}
+   element.removeAttribute('contenteditable');element.removeAttribute('spellcheck');
+  }
+  textSession=null;root.classList.remove('text-editing');textButton.setAttribute('aria-pressed','false');textSave.hidden=true;textCancel.hidden=true;
+  for(const [button,disabled]of session.disabled)button.disabled=disabled;
+  applySavedTexts();rebuildNavigation();
+  document.activeElement?.blur();
+  if(save&&changes.length){editHistory.push({kind:'text',id:session.id,step:session.step,changes});const persisted=saveDeletions();undoButton.hidden=false;textNotice('Testo salvato. Puoi annullare con ↶.',persisted);}
+  else textNotice(save?'Nessuna modifica al testo.':'Modifiche al testo annullate.');
+  document.dispatchEvent(new Event('deckchange'));
+ }
+ textButton.addEventListener('click',safe(()=>{
+  if(textSession){endTextEdit(true);return;}
+  sync();const plan=plans[active],snapshot=new Map(),disabled=new Map();
+  for(const [key,field]of textFields){if(field.slideId!==plan.id)continue;
+   const e=field.element,style=getComputedStyle(e);
+   if(e.closest('[data-part-deleted]')||!e.getClientRects().length||style.visibility==='hidden'||style.opacity==='0'||e.closest('.live-pending'))continue;
+   snapshot.set(key,e.innerHTML);e.setAttribute('contenteditable','true');e.spellcheck=true;
+  }
+  for(const button of document.querySelectorAll('.deck-tools button'))if(![textButton,textSave,textCancel].includes(button)){disabled.set(button,button.disabled);button.disabled=true;}
+  textSession={id:plan.id,step:plan.step,snapshot,disabled};root.classList.add('text-editing');textButton.setAttribute('aria-pressed','true');textSave.hidden=false;textCancel.hidden=false;
+  clearTimeout(noticeTimer);deleteStatus.textContent='Clicca sul testo da modificare. Salva oppure Annulla · Esc annulla.';
+  textButton.blur();
+ }));
+ textSave.addEventListener('click',safe(()=>endTextEdit(true)));
+ textCancel.addEventListener('click',safe(()=>endTextEdit(false)));
+ document.addEventListener('keydown',e=>{
+  if(!textSession)return;
+  e.stopImmediatePropagation();
+  if(e.key==='Escape'){e.preventDefault();endTextEdit(false);}
+  else if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();endTextEdit(true);}
+ },true);
+ document.addEventListener('click',e=>{if(textSession&&!e.target.closest('.deck-tools'))e.stopImmediatePropagation();},true);
+ document.addEventListener('paste',e=>{
+  if(!textSession||!e.target.closest('[data-text-field][contenteditable]'))return;
+  e.preventDefault();const selection=getSelection();if(!selection.rangeCount)return;
+  const range=selection.getRangeAt(0);range.deleteContents();const node=document.createTextNode(e.clipboardData.getData('text/plain'));range.insertNode(node);range.setStartAfter(node);range.collapse(true);selection.removeAllRanges();selection.addRange(range);
+ },true);
+ document.addEventListener('drop',e=>{if(textSession)e.preventDefault();},true);
+ addEventListener('beforeunload',e=>{
+  if(textSession&&[...textSession.snapshot].some(([key,value])=>textFields.get(key).element.innerHTML!==value)){e.preventDefault();e.returnValue='';}
+ });
+ applySavedTexts();
 
  refreshDeck();
 
@@ -2898,7 +3004,7 @@ window.RebuiltScenes=controllers;
  function sync(){const index=current(),c=chapters.find(c=>index+1>=c.start&&index+1<=c.end);if(!c)return;active=c;}
  function show(){sync();if(!active)return;
   let warning=document.getElementById('quiz-edited-warning');if(!warning){warning=document.createElement('p');warning.id='quiz-edited-warning';warning.className='quiz-small';document.getElementById('quiz-heading').after(warning);}
-  const changed=slides.some(s=>s.dataset.chapter==='quiz-chapter-'+active.id&&(s.hasAttribute('data-deck-deleted')||s.querySelector('[data-part-deleted]')));
+  const changed=slides.some(s=>s.dataset.chapter==='quiz-chapter-'+active.id&&(s.hasAttribute('data-deck-deleted')||s.querySelector('[data-part-deleted],[data-text-modified]')));
   warning.hidden=!changed;warning.textContent='Hai modificato questo capitolo: il quiz contiene ancora le domande della versione completa.';seen.add(active.id);previousFocus=document.activeElement;document.getElementById('quiz-heading').textContent=active.title;document.getElementById('quiz-number').textContent='Capitolo '+active.id+' · slide '+active.start+'–'+active.end;document.getElementById('quiz-code').innerHTML=active.qr;const a=document.getElementById('quiz-link');a.href=active.url;a.textContent='Apri il quiz '+active.id;document.getElementById('quiz-short-url').textContent='ludoquercia.github.io/agtest/quiz/?c='+active.id;document.getElementById('quiz-continue').textContent=active.id===9?'Torna alla lezione':'Continua la lezione →';dialog.showModal();}
  function intercept(){sync();const s=slides[current()];if(document.documentElement.classList.contains('rv')&&active&&current()===chapterEnd(active)&&Number(s.dataset.liveCurrent)>=Number(s.dataset.liveTotal)&&!seen.has(active.id)){show();return true;}return false;}
  document.getElementById('quiz-close').onclick=()=>dialog.close();
