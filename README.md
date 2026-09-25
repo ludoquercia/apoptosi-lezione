@@ -7,3 +7,5 @@
 
 Biologia — semestre aperto di Medicina. Unità didattica 7: il controllo
 della proliferazione e della sopravvivenza cellulare.
+
+- **Ciclo cellulare - dispensa studenti stampabile (30 pagine A4)**: https://ludoquercia.github.io/apoptosi-lezione/ciclo-cellulare/dispensa-studenti.pdf
