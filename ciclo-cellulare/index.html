@@ -871,7 +871,7 @@ html.text-editing .deck-tools button:disabled{opacity:.35;cursor:default}
 @media(max-width:760px){#deck-text-edit span{display:none}.deck-tools{flex-wrap:wrap}html.text-editing .deck-tools>button:not(#deck-text-edit):not(#deck-text-save):not(#deck-text-cancel){display:none}}
 @media print{[data-text-field][contenteditable]{outline:none;background:none}}
 </style><meta name="agtest-didattica" content="2026-09-24 — revisione 62–103"/>
-</head>
+<style id="first-face-delete-style">[data-intro-deleted] [data-live-initial],[data-intro-deleted] .r-step-initial{display:none!important}</style></head>
 <body>
 
 <div id="bar"></div>
@@ -2045,6 +2045,8 @@ html.text-editing .deck-tools button:disabled{opacity:.35;cursor:default}
  // Keep original step IDs: animation scripts rely on these numbers.
  let removedParts={},textEdits={};
  function keptSteps(plan){return Array.from({length:plan.total},(_,i)=>i+1).filter(n=>!removedParts[plan.id]?.includes(n));}
+ function keptFaces(plan){return (removedParts[plan.id]?.includes(0)?[]:[0]).concat(keptSteps(plan));}
+ function canDeleteFace(plan,n){return keptFaces(plan).includes(n)&&keptFaces(plan).length>1;}
  function lastKeptStep(plan){return keptSteps(plan).at(-1)||0;}
  function applyPartVisibility(plan){
   plan.slide.querySelectorAll('[data-live-step],[data-live-actor-step],[data-foundation-figure-step]').forEach(e=>{
@@ -2169,6 +2171,9 @@ html.text-editing .deck-tools button:disabled{opacity:.35;cursor:default}
   }
  }
  function render(plan){
+  const faces=keptFaces(plan);
+  if(!faces.includes(plan.step))plan.step=faces.find(n=>n>=plan.step)??faces.at(-1)??0;
+  plan.slide.toggleAttribute('data-intro-deleted',!!removedParts[plan.id]?.includes(0));
   applyPartVisibility(plan);
   plan.slide.dataset.liveTotal=lastKeptStep(plan);
   plan.slide.dataset.liveCurrent=plan.step;
@@ -2212,7 +2217,7 @@ html.text-editing .deck-tools button:disabled{opacity:.35;cursor:default}
  }
  function sync(){activate(current());}
  function forward(){sync();const p=plans[active];const next=keptSteps(p).find(n=>n>p.step);if(presenting&&next!==undefined)setStep(next);else go(active+1);}
- function backward(){sync();const p=plans[active];if(presenting&&p.step>0)setStep(keptSteps(p).filter(n=>n<p.step).at(-1)||0);else if(active>0)go(active-1,presenting?lastKeptStep(plans[active-1]):0);}
+ function backward(){sync();const p=plans[active],previous=keptFaces(p).filter(n=>n<p.step).at(-1);if(presenting&&previous!==undefined)setStep(previous);else if(active>0)go(active-1,presenting?lastKeptStep(plans[active-1]):0);}
  function update(){sync();bar.style.width=(scrollY/Math.max(1,root.scrollHeight-innerHeight)*100)+'%';cue();ticking=false;}
  function openDialog(d){lastFocus=document.activeElement;d.showModal();}
  function closeDialog(d){d.close();if(lastFocus?.focus)lastFocus.focus();}
@@ -2268,7 +2273,7 @@ html.text-editing .deck-tools button:disabled{opacity:.35;cursor:default}
    deleted=[...new Set((Array.isArray(state?.slides)?state.slides:Array.isArray(old)?old:[]).filter(id=>originalSlides.some(s=>s.id===id)))].slice(0,originalSlides.length-1);
    textEdits=state?.texts&&typeof state.texts==='object'&&!Array.isArray(state.texts)?state.texts:{};
    removedParts={};
-   for(const plan of originalPlans){const values=state?.parts?.[plan.id];if(Array.isArray(values))removedParts[plan.id]=[...new Set(values.filter(n=>Number.isInteger(n)&&n>=1&&n<=plan.total))];}
+   for(const plan of originalPlans){const values=state?.parts?.[plan.id];if(Array.isArray(values))removedParts[plan.id]=[...new Set(values.filter(n=>Number.isInteger(n)&&n>=0&&n<=plan.total))];}
    editHistory=Array.isArray(state?.history)?state.history.filter(e=>e&&originalSlides.some(s=>s.id===e.id)&&((e.kind==='slide'&&deleted.includes(e.id))||(e.kind==='part'&&removedParts[e.id]?.includes(e.step))||(e.kind==='text'&&Array.isArray(e.changes)))):deleted.map(id=>({kind:'slide',id}));
   }catch{deleted=[];removedParts={};editHistory=[];}
  }
@@ -2306,6 +2311,7 @@ html.text-editing .deck-tools button:disabled{opacity:.35;cursor:default}
  const editDialog=document.getElementById('deck-edit'),partButton=document.getElementById('deck-delete-part'),wholeButton=document.getElementById('deck-delete-slide');
  let editPlan=null,editStep=0,noticeTimer,editCompleted=false;
  function stepLabel(plan,n){
+  if(n===0)return 'Prima facciata · introduzione della slide';
   const targets=plan.targets.filter(e=>Number(e.dataset.liveStep)===n);
   const text=targets.filter(e=>!e.closest('svg')).map(e=>{
    const walker=document.createTreeWalker(e,NodeFilter.SHOW_TEXT),chunks=[];let node;
@@ -2320,24 +2326,25 @@ html.text-editing .deck-tools button:disabled{opacity:.35;cursor:default}
   announceDeletion(message,persisted);clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>deleteStatus.textContent='',persisted?6000:15000);
  }
  function deletePart(plan,n){
-  if(!keptSteps(plan).includes(n))return;
+  if(!canDeleteFace(plan,n))return;
   (removedParts[plan.id]??=[]).push(n);editHistory.push({kind:'part',id:plan.id,step:n});
-  const persisted=saveDeletions(),remaining=keptSteps(plan);
+  const persisted=saveDeletions(),remaining=keptFaces(plan);
   // Stay on this slide and display the next surviving part, or the previous one.
   const next=remaining.find(x=>x>n)??remaining.at(-1)??0;
   go(slides.indexOf(plan.slide),next);render(plan);cue();
   document.dispatchEvent(new Event('deckchange'));
-  finishEdit('Passaggio eliminato. Il resto della slide è conservato.',persisted);
+  finishEdit(n===0?'Prima facciata eliminata. La slide inizia dal primo passaggio rimasto.':'Passaggio eliminato. Il resto della slide è conservato.',persisted);
  }
  deleteButton.addEventListener('click',safe(()=>{
   editCompleted=false;sync();editPlan=plans[active];editStep=presenting&&!editPlan.showAll?editPlan.step:0;
   document.getElementById('deck-edit-context').textContent='Slide '+(active+1)+' · '+editPlan.slide.querySelector('h1,h2').textContent.trim();
-  const selected=editStep>0&&keptSteps(editPlan).includes(editStep);
-  partButton.disabled=!selected;
-  document.getElementById('deck-part-preview').textContent=selected?stepLabel(editPlan,editStep):'Scegli una parte dall’elenco qui sotto, oppure avanza al passaggio da eliminare.';
+  const selected=presenting&&!editPlan.showAll&&keptFaces(editPlan).includes(editStep);
+  partButton.querySelector('strong').textContent=editStep===0&&selected?'Prima facciata':'Questo passaggio';
+  partButton.disabled=!selected||!canDeleteFace(editPlan,editStep);
+  document.getElementById('deck-part-preview').textContent=selected?(canDeleteFace(editPlan,editStep)?stepLabel(editPlan,editStep):'È l’unica facciata rimasta. Per eliminarla usa Tutta la slide.'):'Scegli una facciata dall’elenco qui sotto.';
   const list=document.getElementById('deck-part-list');list.replaceChildren();
-  for(const n of keptSteps(editPlan)){
-   const button=document.createElement('button');button.type='button';button.dataset.deleteStep=n;button.textContent=stepLabel(editPlan,n);
+  for(const n of keptFaces(editPlan)){
+   const button=document.createElement('button');button.type='button';button.dataset.deleteStep=n;button.textContent=stepLabel(editPlan,n);button.disabled=!canDeleteFace(editPlan,n);if(button.disabled)button.title='Unica facciata rimasta: usa Tutta la slide';
    button.addEventListener('click',safe(()=>deletePart(editPlan,n)));list.append(button);
   }
   const picker=document.getElementById('deck-part-picker');picker.hidden=!list.children.length;picker.open=!selected;
@@ -2362,7 +2369,7 @@ html.text-editing .deck-tools button:disabled{opacity:.35;cursor:default}
   if(edit.kind==='slide'){deleted=deleted.filter(id=>id!==edit.id);refreshDeck(edit.id);}
   else if(edit.kind==='text'){undoTextEdit(edit);go(slides.indexOf(plan.slide),edit.step||0);}
   else{removedParts[edit.id]=removedParts[edit.id].filter(n=>n!==edit.step);go(slides.indexOf(plan.slide),edit.step);}
-  const persisted=saveDeletions();finishEdit(edit.kind==='text'?'Testo ripristinato.':edit.kind==='slide'?'Slide ripristinata.':'Passaggio ripristinato.',persisted);
+  const persisted=saveDeletions();finishEdit(edit.kind==='text'?'Testo ripristinato.':edit.kind==='slide'?'Slide ripristinata.':edit.step===0?'Prima facciata ripristinata.':'Passaggio ripristinato.',persisted);
   document.dispatchEvent(new Event('deckchange'));
  }));
  addEventListener('storage',safe(e=>{
